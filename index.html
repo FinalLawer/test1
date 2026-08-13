@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>五子棋</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
+    background: linear-gradient(135deg, #f5f0e1 0%, #e8dcc0 100%);
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  #app {
+    background: #fbf6e9;
+    padding: 28px 32px 32px;
+    border-radius: 16px;
+    box-shadow: 0 10px 30px rgba(0,0,0,.15);
+    text-align: center;
+  }
+  h1 { font-size: 26px; color: #5a4632; margin-bottom: 8px; }
+  #status {
+    font-size: 16px;
+    color: #7a6248;
+    margin-bottom: 12px;
+    min-height: 24px;
+  }
+  canvas {
+    display: block;
+    margin: 0 auto;
+    border-radius: 8px;
+    box-shadow: inset 0 0 12px rgba(90,70,50,.25);
+    cursor: pointer;
+    background: #e8c98f;
+    touch-action: none;
+  }
+  #controls { margin-top: 16px; display: flex; gap: 12px; justify-content: center; }
+  button {
+    font-size: 15px;
+    padding: 8px 22px;
+    border: none;
+    border-radius: 8px;
+    background: #8a6b46;
+    color: #fff;
+    cursor: pointer;
+    transition: background .2s, transform .1s;
+  }
+  button:hover { background: #6f5333; }
+  button:active { transform: scale(.96); }
+  .winner { color: #c0392b; font-weight: bold; }
+</style>
+</head>
+<body>
+  <div id="app">
+    <h1>五子棋</h1>
+    <p id="status">轮到：黑棋（先手）</p>
+    <canvas id="board"></canvas>
+    <div id="controls">
+      <button id="restart">重新开始</button>
+      <button id="undo">悔棋</button>
+    </div>
+  </div>
+
+  <script>
+    const SIZE = 15;            // 15x15 棋盘
+    const CELL = 36;            // 格子边长（像素）
+    const MARGIN = 25;          // 棋盘边距（像素）
+    const BLACK = 1, WHITE = 2;
+
+    const canvas = document.getElementById('board');
+    const ctx = canvas.getContext('2d');
+    canvas.width = SIZE * CELL + MARGIN * 2;
+    canvas.height = SIZE * CELL + MARGIN * 2;
+
+    let grid = Array.from({ length: SIZE }, () => Array(SIZE).fill(0));
+    let current = BLACK;
+    let history = [];           // 落子记录 [{row, col}]
+    let gameOver = false;
+    let winLine = null;         // 获胜连线 [{row, col}]
+    let hover = null;           // 鼠标悬停位置 {row, col}
+
+    const statusEl = document.getElementById('status');
+
+    function nameOf(p) { return p === BLACK ? '黑棋' : '白棋'; }
+
+    function updateStatus() {
+      if (gameOver) {
+        statusEl.innerHTML = '<span class="winner">' + nameOf(current) + '获胜！</span>';
+      } else {
+        statusEl.textContent = '轮到：' + nameOf(current);
+      }
+    }
+
+    function pointToCell(x, y) {
+      const col = Math.round((x - MARGIN) / CELL);
+      const row = Math.round((y - MARGIN) / CELL);
+      if (row < 0 || row >= SIZE || col < 0 || col >= SIZE) return null;
+      if (Math.abs(x - (MARGIN + col * CELL)) > CELL / 2) return null;
+      if (Math.abs(y - (MARGIN + row * CELL)) > CELL / 2) return null;
+      return { row, col };
+    }
+
+    function checkWin(row, col) {
+      const player = grid[row][col];
+      const dirs = [[1, 0], [0, 1], [1, 1], [1, -1]];
+      for (const [dr, dc] of dirs) {
+        const line = [{ row, col }];
+        for (const s of [1, -1]) {
+          let r = row + dr * s, c = col + dc * s;
+          while (r >= 0 && r < SIZE && c >= 0 && c < SIZE && grid[r][c] === player) {
+            line.push({ row: r, col: c });
+            r += dr * s;
+            c += dc * s;
+          }
+        }
+        if (line.length >= 5) return line;
+      }
+      return null;
+    }
+
+    function drawBoard() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // 背景
+      ctx.fillStyle = '#e8c98f';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // 网格线
+      ctx.strokeStyle = '#5a4632';
+      ctx.lineWidth = 1;
+      for (let i = 0; i < SIZE; i++) {
+        const p = MARGIN + i * CELL;
+        ctx.beginPath();
+        ctx.moveTo(MARGIN, p);
+        ctx.lineTo(MARGIN + (SIZE - 1) * CELL, p);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(p, MARGIN);
+        ctx.lineTo(p, MARGIN + (SIZE - 1) * CELL);
+        ctx.stroke();
+      }
+
+      // 星位
+      const stars = [[3, 3], [11, 3], [7, 7], [3, 11], [11, 11]];
+      ctx.fillStyle = '#5a4632';
+      for (const [r, c] of stars) {
+        ctx.beginPath();
+        ctx.arc(MARGIN + c * CELL, MARGIN + r * CELL, 4, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // 悬停提示
+      if (hover && !gameOver && grid[hover.row][hover.col] === 0) {
+        ctx.strokeStyle = current === BLACK ? 'rgba(0,0,0,.45)' : 'rgba(255,255,255,.6)';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(MARGIN + hover.col * CELL, MARGIN + hover.row * CELL, CELL * 0.42, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+
+      // 棋子
+      for (let r = 0; r < SIZE; r++) {
+        for (let c = 0; c < SIZE; c++) {
+          if (grid[r][c] !== 0) drawStone(MARGIN + c * CELL, MARGIN + r * CELL, grid[r][c]);
+        }
+      }
+
+      // 获胜连线高亮
+      if (winLine) {
+        ctx.strokeStyle = '#e74c3c';
+        ctx.lineWidth = 3;
+        for (const { row, col } of winLine) {
+          ctx.beginPath();
+          ctx.arc(MARGIN + col * CELL, MARGIN + row * CELL, CELL * 0.5, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+      }
+    }
+
+    function drawStone(x, y, player) {
+      const r = CELL * 0.42;
+      const grad = ctx.createRadialGradient(x - r * 0.3, y - r * 0.3, r * 0.2, x, y, r);
+      if (player === BLACK) {
+        grad.addColorStop(0, '#555');
+        grad.addColorStop(1, '#111');
+      } else {
+        grad.addColorStop(0, '#fff');
+        grad.addColorStop(1, '#cfcfcf');
+      }
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(0,0,0,.35)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
+
+    function placeStone(e) {
+      const rect = canvas.getBoundingClientRect();
+      const scaleX = canvas.width / rect.width;
+      const scaleY = canvas.height / rect.height;
+      const x = (e.clientX - rect.left) * scaleX;
+      const y = (e.clientY - rect.top) * scaleY;
+      const cell = pointToCell(x, y);
+      if (!cell || gameOver || grid[cell.row][cell.col] !== 0) return;
+
+      grid[cell.row][cell.col] = current;
+      history.push(cell);
+
+      winLine = checkWin(cell.row, cell.col);
+      if (winLine) {
+        gameOver = true;
+      } else {
+        current = current === BLACK ? WHITE : BLACK;
+        if (history.length === SIZE * SIZE) {
+          gameOver = true;
+          statusEl.textContent = '平局！';
+        }
+      }
+      drawBoard();
+      updateStatus();
+    }
+
+    function onMove(e) {
+      const rect = canvas.getBoundingClientRect();
+      const scaleX = canvas.width / rect.width;
+      const scaleY = canvas.height / rect.height;
+      const x = (e.clientX - rect.left) * scaleX;
+      const y = (e.clientY - rect.top) * scaleY;
+      hover = pointToCell(x, y);
+      drawBoard();
+    }
+
+    function onLeave() {
+      hover = null;
+      drawBoard();
+    }
+
+    function restart() {
+      grid = Array.from({ length: SIZE }, () => Array(SIZE).fill(0));
+      history = [];
+      current = BLACK;
+      gameOver = false;
+      winLine = null;
+      drawBoard();
+      updateStatus();
+    }
+
+    function undo() {
+      if (gameOver && history.length) {
+        // 悔棋后允许继续对局
+        gameOver = false;
+        winLine = null;
+        const last = history.pop();
+        grid[last.row][last.col] = 0;
+        current = current === BLACK ? WHITE : BLACK;
+      } else if (history.length) {
+        const last = history.pop();
+        grid[last.row][last.col] = 0;
+        current = current === BLACK ? WHITE : BLACK;
+      }
+      drawBoard();
+      updateStatus();
+    }
+
+    canvas.addEventListener('click', placeStone);
+    canvas.addEventListener('mousemove', onMove);
+    canvas.addEventListener('mouseleave', onLeave);
+    document.getElementById('restart').addEventListener('click', restart);
+    document.getElementById('undo').addEventListener('click', undo);
+
+    drawBoard();
+    updateStatus();
+  </script>
+</body>
+</html>
