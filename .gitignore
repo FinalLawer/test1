@@ -1,7 +1,7 @@
 # 依赖与构建产物（体积大、可重新生成）
 node_modules/
 dist*/
-build/
+# build/ 是安装器资源目录（icon.ico / installer.nsh / bmp / LICENSE.txt），需要入库
 *.exe
 *.asar
 *.7z

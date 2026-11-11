@@ -69,15 +69,20 @@ function isElevated() {
 /* ------------------------------------------------- 按需提权重启（UAC） */
 
 /**
- * 以管理员身份重新启动本程序。
+ * 以管理员身份重新启动本程序（兜底路径）。
  *
- * 为什么不直接把 requireAdministrator 写进打包清单（dist-release3 就是这么干的）：
- * portable 版是「NSIS 自解压壳（清单 asInvoker）」套「app.exe（清单 requireAdministrator）」。
- * 壳用 ExecWait 去启动 app.exe 时，Windows 直接返回 ERROR_ELEVATION_REQUIRED(740)，
- * 壳既没有 UAC 也没有报错 —— 表现就是**双击毫无反应，进程都不出现**。
+ * 现在打包版是「双击即提权」，配置在 package.json：
+ *   win.requestedExecutionLevel = "requireAdministrator"  → 主 exe 清单
+ *   portable.requestExecutionLevel = "admin"              → NSIS 自解压壳清单
+ * 两层都提权，双击时 Windows 只弹一次 UAC、壳只解压一次，不必进来再点重启。
  *
- * 所以 exe 恢复成普通权限（双击必开），需要「游戏内热键」时再从这里走一次 UAC。
- * 提权是为低级键盘钩子服务的：不提权的话，UIPI 会挡住提权窗口（原神）在前台时的按键。
+ * 历史坑（dist-release3）：只给内层 app.exe 加 requireAdministrator、壳仍是 asInvoker，
+ * 壳用 ExecWait 启动 app.exe 时 Windows 返回 ERROR_ELEVATION_REQUIRED(740)，
+ * 双击毫无反应、进程都不出现。关键是**壳和主程序必须同时提权**。
+ *
+ * 运行时重启只留给：开发版（electron.exe 无清单）、zip 解压直跑、UAC 被取消后
+ * 仍想用普通权限，以及任何清单没生效的场景。提权是为低级键盘钩子服务的：
+ * 不提权的话，UIPI 会挡住提权窗口（原神）在前台时的按键。
  */
 function relaunchElevated() {
   return new Promise((resolve) => {
@@ -116,53 +121,203 @@ function relaunchElevated() {
   });
 }
 
-/* ------------------------------------------------------- 数据目录（便携式） */
+/* ------------------------------- 数据目录：绿色版 / 安装版 [DATA-DIR-START] */
 
 /**
- * 决定 userData 落在哪。
+ * 决定 userData 落在哪 —— 两种发行形态必须分流，否则安装版必坏。
  *
- * 开发时（npm start）仍旧用系统默认的 %APPDATA%\原神跟跑助手，
- * 不去干扰用户已经在用的那份设置和登录态。
+ *  绿色版（zip / portable 单 exe）：exe 同级 data\，整夹拷走设置与 ROI 标定一起走。
+ *  安装版（NSIS，装到 Program Files）：%APPDATA%\原神跟跑助手\，
+ *    因为 Program Files 对普通用户只读，写 settings.json 会直接抛 EPERM。
  *
- * 打包后改成**跟着程序走**：exe 同级目录下的 data\ 里，
- * 于是整个文件夹拷到别的机器上，设置、ROI 标定一起带走。
+ * 判定**只看 installed.flag**（由 build/installer.nsh 安装时写在 exe 同级），
+ * 不猜安装路径：有人把绿色版放进 Program Files，也有人把安装版装在 D 盘可写目录，
+ * 路径都不可靠。zip 里放的是 portable.flag，安装版里没有它，两者不会混淆。
  *
- * 两个坑：
- * 1. portable 版是先把程序解压到 %TEMP% 再运行的，process.execPath 指向临时目录，
+ * 开发时（npm start）一律用系统默认 %APPDATA%，不动用户已有设置和登录态。
+ *
+ * 两个老坑：
+ * 1. portable 单 exe 先解压到 %TEMP% 再运行，process.execPath 指向临时副本，
  *    真实位置 electron-builder 写在 PORTABLE_EXECUTABLE_DIR 里，必须优先用它。
- * 2. 装到 Program Files 这种只读位置时写不进去，要能退回 APPDATA，
- *    否则程序会因为创建不了 settings.json 而在启动阶段报错。
- *
- * 注意：这里**故意不搬任何登录态**。曾经为了省去重新扫码，把 %APPDATA% 里的
- * Partitions（Cookie 库）和 Local State（cookie 解密密钥）拷进 data\，
- * 那样发布出去的便携包一旦在本机跑过，data\ 里就躺着可用的账号凭证，
- * 整包发出去等于送账号。宁可让用户重新扫一次码。
+ * 2. 程序目录不可写时退回 APPDATA，否则启动阶段就会因为建不了 settings.json 报错。
  */
+const DATA_DIR_NAME = 'data';
+const INSTALLED_FLAG = 'installed.flag';
+const PORTABLE_FLAG = 'portable.flag';
+const MIGRATE_FROM_FILE = 'migrate-from.txt';
+const MIGRATED_FLAG = '.migrated';
+// settings.json 内含 ROI 标定、窗口位置、观看记录；两张 png 是识别调试截图。
+// Chromium 缓存 / GPUCache / 日志一律不搬，避免把几十 MB 垃圾和隐私带进新目录。
+const MIGRATE_FILES = ['settings.json', 'bearing-dump.png', 'bearing-frame.png'];
+const MIGRATE_LOGIN_DIR = 'Partitions';
+const MIGRATE_LOGIN_FILES = ['Local State'];
+
+function programDir() {
+  return process.env.PORTABLE_EXECUTABLE_DIR || path.dirname(app.getPath('exe'));
+}
+
+function hasProgramFlag(name) {
+  try {
+    return fs.existsSync(path.join(programDir(), name));
+  } catch {
+    return false;
+  }
+}
+
+function readTextSafe(file) {
+  try {
+    return fs.readFileSync(file, 'utf8');
+  } catch {
+    return '';
+  }
+}
+
+/** 只复制白名单文件，且绝不覆盖目标里已存在的内容 */
+function copyFileIfAbsent(src, dst) {
+  if (!fs.existsSync(src) || fs.existsSync(dst)) return false;
+  try {
+    fs.mkdirSync(path.dirname(dst), { recursive: true });
+    fs.copyFileSync(src, dst);
+    return true;
+  } catch (err) {
+    console.warn(`[data] 复制 ${path.basename(src)} 失败：${err.code || err.message}`);
+    return false;
+  }
+}
+
+function copyTreeIfAbsent(srcDir, dstDir) {
+  if (!fs.existsSync(srcDir) || fs.existsSync(dstDir)) return;
+  try {
+    fs.mkdirSync(dstDir, { recursive: true });
+    for (const ent of fs.readdirSync(srcDir, { withFileTypes: true })) {
+      const from = path.join(srcDir, ent.name);
+      const to = path.join(dstDir, ent.name);
+      if (ent.isDirectory()) copyTreeIfAbsent(from, to);
+      else if (ent.isFile()) copyFileIfAbsent(from, to);
+    }
+  } catch (err) {
+    console.warn(`[data] 复制目录 ${srcDir} 失败：${err.code || err.message}`);
+  }
+}
+
+/**
+ * 旧绿色版 data\ 的可能位置，按优先级：
+ *  1. 安装页「迁移旧数据」填的目录 → 写在 exe 同级 migrate-from.txt 第一行
+ *  2. GRB_MIGRATE_FROM 环境变量（手动 / CI 用）
+ *  3. exe 同级 data\（把安装版覆盖装到原绿色版目录里的场景）
+ * 允许填绿色版根目录或它里面的 data 目录，自动识别。
+ */
+function legacyDataCandidates(target) {
+  const out = [];
+  const add = (value) => {
+    if (!value) return;
+    let dir = path.resolve(String(value).trim().replace(/^"|"$/g, ''));
+    if (!fs.existsSync(path.join(dir, 'settings.json')) &&
+        fs.existsSync(path.join(dir, DATA_DIR_NAME, 'settings.json'))) {
+      dir = path.join(dir, DATA_DIR_NAME);
+    }
+    if (dir !== path.resolve(target) && !out.includes(dir)) out.push(dir);
+  };
+  const lines = readTextSafe(path.join(programDir(), MIGRATE_FROM_FILE)).split(/\r?\n/);
+  add(lines[0]);
+  add(process.env.GRB_MIGRATE_FROM);
+  add(path.join(programDir(), DATA_DIR_NAME));
+  return out;
+}
+
+function migrationIncludeLogin() {
+  const text = readTextSafe(path.join(programDir(), MIGRATE_FROM_FILE));
+  return /includeLogin\s*=\s*1/.test(text) || process.env.GRB_MIGRATE_LOGIN === '1';
+}
+
+/**
+ * 安装版首次启动时，把旧绿色版的设置 / ROI 标定搬进 %APPDATA%。
+ *
+ * 登录态（Partitions + Local State）**默认不搬**：过去「打包前顺手把 Cookie 库
+ * 拷进 data\」的教训是，那份带凭证的目录会被整包发出去，等于送账号。
+ * 这里方向相反 —— 只在本机、从用户明确指定的旧目录搬进本机 APPDATA，
+ * 不进任何发布产物，所以做成安装页上的可选项（includeLogin=1）是安全的。
+ * 复制而非移动，旧绿色版仍可照常用；.migrated 标记保证只跑一次。
+ */
+function migrateLegacyData(target) {
+  const marker = path.join(target, MIGRATED_FLAG);
+  if (fs.existsSync(marker) || fs.existsSync(path.join(target, 'settings.json'))) {
+    return { ok: false, reason: 'already-initialized' };
+  }
+  const source = legacyDataCandidates(target).find(
+    (dir) => fs.existsSync(path.join(dir, 'settings.json'))
+  );
+  if (!source) return { ok: false, reason: 'no-legacy-data' };
+
+  const withLogin = migrationIncludeLogin();
+  try {
+    fs.mkdirSync(target, { recursive: true });
+  } catch (err) {
+    console.warn(`[data] 创建 ${target} 失败：${err.code || err.message}`);
+    return { ok: false, reason: 'target-not-writable' };
+  }
+
+  let copied = 0;
+  for (const name of MIGRATE_FILES) {
+    if (copyFileIfAbsent(path.join(source, name), path.join(target, name))) copied++;
+  }
+  if (withLogin) {
+    for (const name of MIGRATE_LOGIN_FILES) {
+      if (copyFileIfAbsent(path.join(source, name), path.join(target, name))) copied++;
+    }
+    copyTreeIfAbsent(path.join(source, MIGRATE_LOGIN_DIR), path.join(target, MIGRATE_LOGIN_DIR));
+  }
+  try {
+    fs.writeFileSync(marker, JSON.stringify({ from: source, at: new Date().toISOString(), withLogin }, null, 2), 'utf8');
+  } catch (err) {
+    console.warn(`[data] 写迁移标记失败：${err.code || err.message}`);
+  }
+  console.log(`[data] 已从 ${source} 迁移 ${copied} 项${withLogin ? '（含登录态）' : '（不含登录态）'}`);
+  return { ok: true, from: source, copied, withLogin };
+}
+
+let installMode = 'dev'; // dev | installed | portable | fallback
 function resolveUserDataDir() {
   const fallback = app.getPath('userData');
-  if (!app.isPackaged) return fallback;
+  if (!app.isPackaged) {
+    installMode = 'dev';
+    return fallback;
+  }
 
-  const base = process.env.PORTABLE_EXECUTABLE_DIR || path.dirname(app.getPath('exe'));
-  const dir = path.join(base, 'data');
+  if (hasProgramFlag(INSTALLED_FLAG)) {
+    installMode = 'installed';
+    try {
+      migrateLegacyData(fallback);
+    } catch (err) {
+      console.warn(`[data] 旧数据迁移异常，继续用 ${fallback}：${err.message}`);
+    }
+    try {
+      fs.mkdirSync(fallback, { recursive: true });
+    } catch {}
+    return fallback;
+  }
 
+  const dir = path.join(programDir(), DATA_DIR_NAME);
   try {
     fs.mkdirSync(dir, { recursive: true });
     // 探写权限：只判断 exists 不够，目录可能存在但没有写权限
     const probe = path.join(dir, '.write-probe');
     fs.writeFileSync(probe, 'ok');
     fs.unlinkSync(probe);
+    installMode = 'portable';
+    return dir;
   } catch (err) {
     console.warn(`[data] 程序目录不可写（${err.code || err.message}），回退到 ${fallback}`);
+    installMode = 'fallback';
     return fallback;
   }
-
-  return dir;
 }
 
 const USER_DATA_DIR = resolveUserDataDir();
 app.setPath('userData', USER_DATA_DIR);
 // 缓存类目录一并挪过去，否则 C 盘会多出一份 Chromium 缓存
 app.setPath('sessionData', USER_DATA_DIR);
+/* [DATA-DIR-END] ---------------------------------------------------------- */
 
 
 // 支持 `npm start -- --open BV1xx411c7mD`：从命令行/快捷方式直接带视频启动
@@ -320,6 +475,7 @@ let settings = structuredClone(DEFAULT_SETTINGS);
 let win = null;         // 跟跑浮窗（无边框置顶，只管播放）
 let consoleWin = null;  // 启动器（所有设置都在这里）
 let loginWin = null;
+let quittingFromConsole = false; // 关启动器 = 退出整个应用，防止 closed 事件重入
 let failedHotkeys = [];
 let saveTimer = null;
 // 渲染层上报的输入状态：打字时不该触发单键热键，但「窗口在前台」不等于在打字
@@ -570,8 +726,18 @@ function createConsole() {
     minWidth: 800,
     minHeight: 450,
     title: '原神跟跑助手 · 启动器',
-    backgroundColor: '#0d0e12',
+    backgroundColor: '#1e1e1e',
     autoHideMenuBar: true,
+    // Windows 原生标题栏在浅色系统主题下是一条白条，会和我们自绘的 40px 深色
+    // TitleBar 叠成两层。用 Window Controls Overlay 把网页内容延伸到窗口顶部，
+    // 最小化/最大化/关闭三个系统按钮浮在深色顶栏右上角（VS Code / Wpf.Ui 同款）。
+    // 对应 console.css 里 .topbar 的右侧留白与拖动区域；仅 Windows 有效。
+    ...(process.platform === 'win32'
+      ? {
+          titleBarStyle: 'hidden',
+          titleBarOverlay: { color: '#1e1e1e', symbolColor: '#e6e6e6', height: 40 }
+        }
+      : {}),
     show: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -598,8 +764,19 @@ function createConsole() {
 
   consoleWin.on('closed', () => {
     consoleWin = null;
-    // 启动器关了、浮窗也没在跑，就没有任何界面了，直接退出
-    if (!win || win.isDestroyed()) app.quit();
+    // 关启动器就是退出整个应用：跟跑视频窗、方位叠加层、登录窗一起收掉。
+    // 旧逻辑只在「浮窗没开」时 quit，于是开着跟跑时关启动器，视频窗会留在
+    // 屏幕上、进程也不退出，用户还得再去任务栏手动关一次。
+    if (quittingFromConsole) return;
+    quittingFromConsole = true;
+    for (const w of [win, overlayWin, loginWin]) {
+      try {
+        if (w && !w.isDestroyed()) w.destroy();
+      } catch (err) {
+        console.warn('[quit] 关闭窗口失败：', err.message);
+      }
+    }
+    app.quit();
   });
 
   return consoleWin;
@@ -1019,12 +1196,10 @@ function registerIpc() {
       hookRunning: hookHotkeys.isRunning(),
       // 没提权时游戏内热键必然收不到（UIPI），界面要直说，别让用户怀疑程序坏了
       elevated: isElevated(),
-      // 让启动器能显示「设置和登录态存在哪」，便携版就是 exe 同级的 data\
+      // 让启动器能显示「设置和登录态存在哪」，绿色版就是 exe 同级的 data\
       dataDir: app.getPath('userData'),
-      portable: app.isPackaged && app.getPath('userData') === path.join(
-        process.env.PORTABLE_EXECUTABLE_DIR || path.dirname(app.getPath('exe')),
-        'data'
-      )
+      portable: installMode === 'portable',
+      installMode
     };
   });
 
@@ -1239,8 +1414,8 @@ function registerIpc() {
         win.minimize();
         break;
       case 'close':
-        // 只关浮窗，不退出程序 —— 启动器还在，随时可以再点「启动跟跑」。
-        // 真正退出走启动器的关闭按钮 / window-all-closed。
+        // 只关跟跑浮窗，不退出程序 —— 启动器还在，随时可以再点「启动跟跑」。
+        // 反方向不一样：关启动器会连带收掉所有窗口并退出（见 createConsole）。
         win.close();
         break;
       case 'hide':
@@ -1335,11 +1510,10 @@ if (!gotLock) {
   });
 
   app.whenReady().then(async () => {
-    // 这里**故意不自动提权**。
-    // portable 版是「自解压壳 + 主程序」，提权重启意味着再解压一遍 100MB，
-    // 每次启动都要多等 20 秒、还每次弹 UAC —— 为了一个「游戏内热键」不值得。
-    // 所以：双击永远直接打开；需要游戏内热键时，用户在启动器顶部横幅里
-    // 主动点「以管理员身份重启」，只付一次代价。
+    // 打包版已在 exe 清单层提权（双击即弹 UAC），这里**不再自动重启**：
+    // portable 版是「自解压壳 + 主程序」，运行时再提权等于多解压一遍 100MB、多等 20 秒。
+    // 只有清单没生效时（开发版 / 解压直跑 / UAC 被取消），启动器顶部横幅仍提供
+    // 「以管理员身份重启」作为兜底。
     // 常驻工具：明确告诉系统「别挂起我」。配合上面的 EcoQoS 开关，
     // 保证窗口最小化后全局钩子照常工作（这正是「在游戏里按热键」的核心场景）。
     powerSaveBlocker.start('prevent-app-suspension');

@@ -9,7 +9,12 @@
   "scripts": {
     "start": "node scripts/launch.js",
     "dist": "electron-builder --win",
-    "dist:dir": "electron-builder --win --dir"
+    "dist:dir": "electron-builder --win --dir",
+    "pack:zip": "node scripts/pack-release.js --zip-only",
+    "pack:setup": "node scripts/pack-release.js --setup-only",
+    "pack:release": "node scripts/pack-release.js",
+    "verify:artifacts": "node scripts/verify-artifacts.js",
+    "test:data-dir": "node scripts/data-dir-test.js"
   },
   "devDependencies": {
     "electron": "^45.0.0",
@@ -46,6 +51,7 @@
           ]
         }
       ],
+      "requestedExecutionLevel": "requireAdministrator",
       "artifactName": "GenshinRouteBuddy-${version}-${arch}.${ext}"
     },
     "nsis": {
@@ -55,10 +61,18 @@
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "原神跟跑助手",
-      "deleteAppDataOnUninstall": false
+      "deleteAppDataOnUninstall": false,
+      "include": "build/installer.nsh",
+      "license": "build/LICENSE.txt",
+      "installerSidebar": "build/installerSidebar.bmp",
+      "installerHeader": "build/installerHeader.bmp",
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "artifactName": "GenshinRouteBuddy-${version}-Setup.${ext}"
     },
     "portable": {
-      "artifactName": "GenshinRouteBuddy-${version}-portable.${ext}"
+      "artifactName": "GenshinRouteBuddy-${version}-portable.${ext}",
+      "requestExecutionLevel": "admin"
     }
   },
   "dependencies": {

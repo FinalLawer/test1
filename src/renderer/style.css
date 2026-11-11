@@ -4,8 +4,10 @@
   --line: rgba(255, 255, 255, 0.1);
   --fg: #e9e7e3;
   --dim: #93939f;
-  --gold: #e7c98b;
-  --gold-dim: rgba(231, 201, 139, 0.16);
+  --accent: #49b2fc;
+  --accent-soft: rgba(73, 178, 252, 0.16);
+  /* 框选圆环叠在游戏画面上，保留暖金以免和小地图里的青色玩家箭头撞色 */
+  --calib: #e7c98b;
   --danger: #ff6b6b;
 }
 
@@ -57,7 +59,7 @@ body {
   gap: 6px;
   font-weight: 600;
   letter-spacing: 0.3px;
-  color: var(--gold);
+  color: var(--accent);
   white-space: nowrap;
 }
 
@@ -65,8 +67,8 @@ body {
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: var(--gold);
-  box-shadow: 0 0 7px rgba(231, 201, 139, 0.75);
+  background: var(--accent);
+  box-shadow: 0 0 7px rgba(73, 178, 252, 0.75);
 }
 
 .vtitle {
@@ -156,10 +158,10 @@ body {
   height: 20px;
   min-width: 40px;
   padding: 0 8px;
-  border: 1px solid rgba(231, 201, 139, 0.45);
+  border: 1px solid rgba(73, 178, 252, 0.45);
   border-radius: 10px;
-  background: rgba(231, 201, 139, 0.12);
-  color: var(--gold);
+  background: rgba(73, 178, 252, 0.12);
+  color: var(--accent);
   font-size: 10.5px;
   line-height: 1;
   cursor: pointer;
@@ -168,7 +170,7 @@ body {
 }
 
 .chip:hover {
-  background: rgba(231, 201, 139, 0.24);
+  background: rgba(73, 178, 252, 0.24);
 }
 
 .chip.on {
@@ -197,7 +199,7 @@ button.primary {
   padding: 0 12px;
   border: 0;
   border-radius: 5px;
-  background: var(--gold);
+  background: var(--accent);
   color: #1a1508;
   font-weight: 700;
   font-size: 11px;
@@ -259,7 +261,7 @@ button.ghost.block {
 }
 
 #urlInput:focus {
-  border-color: rgba(231, 201, 139, 0.55);
+  border-color: rgba(73, 178, 252, 0.55);
   background: rgba(255, 255, 255, 0.08);
 }
 
@@ -289,7 +291,7 @@ button.ghost.block {
   justify-content: center;
   gap: 6px;
   color: var(--dim);
-  background: radial-gradient(circle at 50% 42%, rgba(231, 201, 139, 0.07), transparent 62%), #0a0b0f;
+  background: radial-gradient(circle at 50% 42%, rgba(73, 178, 252, 0.07), transparent 62%), #0a0b0f;
   pointer-events: none;
   z-index: 2;
 }
@@ -300,7 +302,7 @@ button.ghost.block {
 
 #placeholder .ph-icon {
   font-size: 26px;
-  color: var(--gold);
+  color: var(--accent);
   opacity: 0.8;
   margin-bottom: 2px;
 }
@@ -340,14 +342,14 @@ body:not(.ui) #controls {
   height: 24px;
   border: 0;
   border-radius: 6px;
-  background: var(--gold-dim);
-  color: var(--gold);
+  background: var(--accent-soft);
+  color: var(--accent);
   font-size: 11px;
   cursor: pointer;
 }
 
 .play:hover {
-  background: rgba(231, 201, 139, 0.28);
+  background: rgba(73, 178, 252, 0.28);
 }
 
 .time {
@@ -384,7 +386,7 @@ body:not(.ui) #controls {
   width: 0;
   transform: translateY(-50%);
   border-radius: 2px;
-  background: var(--gold);
+  background: var(--accent);
   transition: width 0.08s linear;
 }
 
@@ -499,7 +501,7 @@ body:not(.ui) #controls {
   height: 34px;
   padding: 0 6px 0 12px;
   border-bottom: 1px solid var(--line);
-  color: var(--gold);
+  color: var(--accent);
   font-weight: 600;
 }
 
@@ -530,14 +532,14 @@ body:not(.ui) #controls {
 
 .row input[type="range"] {
   width: 108px;
-  accent-color: var(--gold);
+  accent-color: var(--accent);
   cursor: pointer;
 }
 
 .row input[type="checkbox"] {
   width: 14px;
   height: 14px;
-  accent-color: var(--gold);
+  accent-color: var(--accent);
   cursor: pointer;
 }
 
@@ -572,7 +574,7 @@ body:not(.ui) #controls {
 .calib-box {
   position: absolute;
   z-index: 1;
-  border: 1.5px dashed var(--gold);
+  border: 1.5px dashed var(--calib);
   border-radius: 50%;
   /* 把圆环以外的画面压暗，只留出小地图那一片，方便对准 */
   box-shadow: 0 0 0 9999px rgba(8, 9, 12, 0.42);
@@ -588,7 +590,7 @@ body:not(.ui) #controls {
 .calib-box::after {
   content: '';
   position: absolute;
-  background: rgba(231, 201, 139, 0.6);
+  background: var(--calib);
 }
 
 .calib-box::before {
@@ -615,7 +617,7 @@ body:not(.ui) #controls {
   padding: 1px 6px;
   border-radius: 4px;
   background: rgba(10, 11, 15, 0.88);
-  color: var(--gold);
+  color: var(--calib);
   font-size: 10px;
   white-space: nowrap;
 }
@@ -686,7 +688,7 @@ body:not(.ui) #controls {
 #calibSize {
   flex: 0 0 auto;
   font-variant-numeric: tabular-nums;
-  color: var(--gold);
+  color: var(--accent);
 }
 
 .hk-list {
@@ -718,12 +720,12 @@ body:not(.ui) #controls {
 }
 
 .hk-row .kbd:hover {
-  border-color: rgba(231, 201, 139, 0.5);
+  border-color: rgba(73, 178, 252, 0.5);
 }
 
 .hk-row .kbd.capturing {
-  border-color: var(--gold);
-  color: var(--gold);
+  border-color: var(--accent);
+  color: var(--accent);
   animation: pulse 1s infinite;
 }
 
@@ -746,13 +748,13 @@ body:not(.ui) #controls {
   margin-top: 12px;
   padding: 8px 9px;
   border-radius: 6px;
-  background: rgba(231, 201, 139, 0.07);
-  border: 1px solid rgba(231, 201, 139, 0.18);
+  background: rgba(73, 178, 252, 0.07);
+  border: 1px solid rgba(73, 178, 252, 0.18);
   color: #b9b3a4;
   font-size: 10.5px;
   line-height: 1.6;
 }
 
 .tip b {
-  color: var(--gold);
+  color: var(--accent);
 }

@@ -10,114 +10,317 @@
     <link rel="stylesheet" href="console.css" />
   </head>
   <body>
+    <!-- 纯 CSS 分页：radio 必须是 #shell 的前置兄弟，导航 label 通过 for 切换。
+         这样不用往 console.js 里加任何 UI 代码，回归脚本的行为完全不变。 -->
+    <input class="nav-radio" type="radio" name="nav" id="tab-home" checked />
+    <input class="nav-radio" type="radio" name="nav" id="tab-bearing" />
+    <input class="nav-radio" type="radio" name="nav" id="tab-window" />
+    <input class="nav-radio" type="radio" name="nav" id="tab-hotkeys" />
+
+    <!-- 线性图标：内联 SVG symbol，不依赖字体或外部资源（CSP 只允许 self） -->
+    <svg class="icon-defs" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16" /></symbol>
+      <symbol id="i-compass" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" /><path d="M15.6 8.4l-2.1 5.1-5.1 2.1 2.1-5.1z" /></symbol>
+      <symbol id="i-play" viewBox="0 0 24 24"><path d="M8 5.5v13l10.5-6.5z" /></symbol>
+      <symbol id="i-window" viewBox="0 0 24 24"><rect x="3" y="4.5" width="18" height="15" rx="2" /><path d="M3 9.5h18M7 7h.01M9.5 7h.01" /></symbol>
+      <symbol id="i-keyboard" viewBox="0 0 24 24"><rect x="2.5" y="6" width="19" height="12" rx="2" /><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M6 14h.01M10 14h.01M14 14h.01M18 14h.01" /></symbol>
+      <symbol id="i-video" viewBox="0 0 24 24"><rect x="3" y="5" width="13" height="14" rx="2" /><path d="M16 10l5-3v10l-5-3z" /></symbol>
+      <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 7h9M17 7h3M4 17h3M11 17h9" /><circle cx="15" cy="7" r="2" /><circle cx="9" cy="17" r="2" /></symbol>
+      <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" /><path d="M12 11v5M12 8h.01" /></symbol>
+      <symbol id="i-warn" viewBox="0 0 24 24"><path d="M12 4l9 16H3z" /><path d="M12 10v4M12 17h.01" /></symbol>
+      <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3.5 2" /></symbol>
+      <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" /></symbol>
+      <symbol id="i-pin" viewBox="0 0 24 24"><path d="M9 3h6l-1 6 3 3v2H7v-2l3-3zM12 14v7" /></symbol>
+      <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2.5 12S6 6.5 12 6.5 21.5 12 21.5 12 18 17.5 12 17.5 2.5 12 2.5 12z" /><circle cx="12" cy="12" r="2.5" /></symbol>
+      <symbol id="i-cursor" viewBox="0 0 24 24"><path d="M5 3l14 8-6.5 1.5L9.5 19z" /></symbol>
+      <symbol id="i-volume" viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9z" /><path d="M17 9a4 4 0 010 6M19.5 6.5a7.5 7.5 0 010 11" /></symbol>
+      <symbol id="i-resume" viewBox="0 0 24 24"><path d="M4 5v14l10-7zM17 5v14" /></symbol>
+    </svg>
+
     <div id="shell">
-      <header>
-        <div class="head-row">
-          <div class="brand">
-            <span class="dot"></span>
-            <span class="name">原神跟跑助手</span>
+      <!-- ============================================ 左侧导航（NavigationView） -->
+      <aside class="navpane">
+        <!-- NavigationView 的 PaneToggle：汉堡按钮，纯装饰 -->
+        <div class="nav-brand">
+          <span class="brand-mark"><svg class="ico"><use href="#i-menu"></use></svg></span>
+        </div>
+
+        <div class="nav-caption">工作台</div>
+        <nav class="nav-list">
+          <label class="nav-item" for="tab-home" title="启动">
+            <svg class="ico"><use href="#i-play"></use></svg><span>启动</span>
+          </label>
+          <label class="nav-item" for="tab-bearing" title="方位标定">
+            <svg class="ico"><use href="#i-compass"></use></svg><span>方位标定</span>
+          </label>
+          <label class="nav-item" for="tab-window" title="浮窗">
+            <svg class="ico"><use href="#i-window"></use></svg><span>浮窗</span>
+          </label>
+          <label class="nav-item" for="tab-hotkeys" title="快捷键">
+            <svg class="ico"><use href="#i-keyboard"></use></svg><span>快捷键</span>
+          </label>
+        </nav>
+
+      </aside>
+
+      <!-- ======================================================= 内容工作区 -->
+      <section class="workspace">
+        <!-- ui:TitleBar：Icon + Header + TrailingContent -->
+        <header class="topbar">
+          <div class="title-brand">
+            <span class="title-mark"><svg class="ico"><use href="#i-compass"></use></svg></span>
+            <strong>原神跟跑助手</strong>
             <span class="ver" id="ver"></span>
           </div>
-          <div class="row head-account">
+          <div class="crumb">
+            <span class="sep">·</span>
+            <span class="crumb-cur" data-for="home">启动</span>
+            <span class="crumb-cur" data-for="bearing">方位标定</span>
+            <span class="crumb-cur" data-for="window">浮窗</span>
+            <span class="crumb-cur" data-for="hotkeys">快捷键</span>
+          </div>
+          <div class="topbar-right">
             <span id="accountLine" class="account">未登录 · 只能看预览和标清</span>
-            <button id="btnLogin" class="ghost">登录 / 切换账号</button>
+            <button id="btnLogin" class="ghost tiny">登录 / 切换账号</button>
+          </div>
+        </header>
+
+        <!-- 提权提示：放在分页之外，切到哪一页都看得见 -->
+        <div class="global-notes">
+          <div id="elevBanner" class="elev-banner" hidden>
+            <svg class="ico"><use href="#i-warn"></use></svg>
+            <span id="elevBannerText"></span>
+            <button id="btnElevate" class="ghost tiny">以管理员身份重启</button>
           </div>
         </div>
-        <p class="sub">所有设置都在这里配。配好后点「启动跟跑」，浮窗会置顶在原神窗口上面。</p>
-      </header>
 
-      <main>
-        <!-- 未提权时的全局提示：游戏内热键要管理员身份才收得到（Windows UIPI）。
-             放在首屏顶部，而不是塞进下面的快捷键卡片 —— 那张卡在 16:9 窗口里要滚动才看得到。 -->
-        <div id="elevBanner" class="elev-banner" hidden>
-          <span id="elevBannerText"></span>
-          <button id="btnElevate" class="ghost tiny">以管理员身份重启</button>
+        <div class="content">
+          <!-- ---------------------------------------------------------- 启动 -->
+          <div class="pane pane-home">
+            <!-- HomePage.xaml: Height=200 / CornerRadius=8 / OpacityMask 左下渐隐 / 文字 Margin=52,0,0,26 -->
+            <div class="banner">
+              <div class="banner-art"></div>
+              <div class="banner-shade"></div>
+              <div class="banner-text">
+                <h2>原神跟跑助手</h2>
+                <p>边跑图，边看攻略</p>
+                <span class="banner-link">视频里的小地图方位与视角方向，实时叠在你的游戏画面上</span>
+              </div>
+            </div>
+
+            <div class="pane-head">
+              <h1>启动</h1>
+              <p>选好视频、对准小地图，然后回到游戏里用快捷键控制播放。</p>
+            </div>
+
+            <section class="card">
+              <div class="card-head">
+                <span class="card-ico"><svg class="ico"><use href="#i-video"></use></svg></span>
+                <div class="card-heading">
+                  <h2>视频</h2>
+                  <p>支持 BV 号、av 号、完整链接与带 <b>?p=</b> 的分 P 链接</p>
+                </div>
+              </div>
+              <div class="card-body">
+                <div class="row">
+                  <input id="url" type="text" spellcheck="false" placeholder="粘贴 B 站链接 / BV 号，回车启动" />
+                  <button id="btnLaunch" class="primary">启动跟跑</button>
+                </div>
+                <div class="meta"><span id="videoMeta">还没载入视频</span></div>
+                <div class="resume" id="resumeBar" hidden>
+                  <span class="resume-tag">上次看到</span>
+                  <span class="resume-info" id="resumeInfo">—</span>
+                  <button id="btnResume" class="ghost tiny">继续观看</button>
+                </div>
+                <div class="row">
+                  <label class="lbl">分 P</label>
+                  <select id="part" class="sel"></select>
+                  <span class="grow"></span>
+                  <span id="floatState" class="badge off">浮窗未启动</span>
+                  <button id="btnStop" class="ghost" disabled>关闭浮窗</button>
+                </div>
+              </div>
+            </section>
+
+            <section class="card card-note">
+              <div class="card-head">
+                <span class="card-ico"><svg class="ico"><use href="#i-info"></use></svg></span>
+                <div class="card-heading">
+                  <h2>第一次使用</h2>
+                  <p>按这三步走，基本不会踩坑</p>
+                </div>
+              </div>
+              <div class="card-body note-steps">
+                <div class="note-step"><b>1</b><span>游戏内「图像 → 显示模式」改成 <b>窗口化</b> 或 <b>无边框</b>；独占全屏下系统不允许任何浮窗盖上去。</span></div>
+                <div class="note-step"><b>2</b><span>在「方位标定」里框选视频小地图，再把红圈拖到你自己的小地图上。</span></div>
+                <div class="note-step"><b>3</b><span>回到游戏，用快捷键暂停 / 快进。默认 <b>Alt+空格</b> 暂停播放。</span></div>
+              </div>
+            </section>
+          </div>
+
+          <!-- ------------------------------------------------------ 方位标定 -->
+          <div class="pane pane-bearing">
+            <div class="pane-head">
+              <h1>方位标定</h1>
+              <p>红箭头是视频里角色的行进方向，绿弧是镜头视角方向，两者独立识别、互不干扰。</p>
+            </div>
+
+            <section class="card">
+              <div class="card-head">
+                <span class="card-ico"><svg class="ico"><use href="#i-compass"></use></svg></span>
+                <div class="card-heading">
+                  <h2>显示与标定</h2>
+                  <p>标定结果按视频记住，换片不用重新框</p>
+                </div>
+              </div>
+              <div class="card-body">
+                <label class="setting" for="setBearing">
+                  <span class="setting-ico"><svg class="ico"><use href="#i-pin"></use></svg></span>
+                  <span class="setting-text"><strong>显示方位箭头</strong><small>在叠加层画出视频里的行进方向与视角方位</small></span>
+                  <span class="switch"><input type="checkbox" id="setBearing" /></span>
+                </label>
+                <div class="setting">
+                  <span class="setting-ico"><svg class="ico"><use href="#i-sliders"></use></svg></span>
+                  <span class="setting-text"><strong>标记大小</strong><small>叠加层上红圈与绿弧的直径</small></span>
+                  <span class="setting-ctrl">
+                    <input type="range" id="setBearingSize" min="60" max="240" step="5" />
+                    <span class="val" id="sizeVal">110</span>
+                  </span>
+                </div>
+                <div class="btn-grid">
+                  <button id="btnPickRoi" class="ghost">① 框选视频里的小地图</button>
+                  <button id="btnPlace" class="ghost">② 拖到我的游戏小地图上</button>
+                  <button id="btnDumpRoi" class="ghost">抓一帧核对</button>
+                  <button id="btnOpenDump" class="ghost">打开导出位置</button>
+                  <button id="btnClearRoi" class="ghost span-all">清除本视频标定</button>
+                </div>
+                <p class="tip">
+                  框选要在浮窗里做：点了会把浮窗叫起来，拖金色圆环套住视频里的小地图，滚轮调大小。<br />
+                  转场 / 特写 / 对话时画面里没有小地图，箭头会自动收起，不是故障。
+                </p>
+              </div>
+            </section>
+
+            <section class="card card-note">
+              <div class="card-head">
+                <span class="card-ico"><svg class="ico"><use href="#i-info"></use></svg></span>
+                <div class="card-heading">
+                  <h2>两个方向为什么要分开</h2>
+                  <p>站着原地转镜头时，角色朝向和行进方向可以差 180°</p>
+                </div>
+              </div>
+              <div class="card-body note-steps">
+                <div class="note-step"><b>红</b><span>青色玩家三角指向的方向 = 角色正在往哪走，来自小地图中央的箭头。</span></div>
+                <div class="note-step"><b>绿</b><span>半透明白色扇形（恒定 90° 张角）的中轴 = 镜头看过去的方向，来自视野指示扇形。</span></div>
+              </div>
+            </section>
+          </div>
+
+          <!-- ---------------------------------------------------------- 浮窗 -->
+          <div class="pane pane-window">
+            <div class="pane-head">
+              <h1>浮窗</h1>
+              <p>控制置顶、穿透、透明度与播放行为；改完立刻生效，会自动记住。</p>
+            </div>
+
+            <section class="card">
+              <div class="card-head">
+                <span class="card-ico"><svg class="ico"><use href="#i-window"></use></svg></span>
+                <div class="card-heading">
+                  <h2>窗口行为</h2>
+                  <p>游戏里也能用全局快捷键随时切换</p>
+                </div>
+              </div>
+              <div class="card-body">
+                <label class="setting" for="setResumeOnLaunch">
+                  <span class="setting-ico"><svg class="ico"><use href="#i-resume"></use></svg></span>
+                  <span class="setting-text"><strong>下次启动自动继续上次视频</strong><small>记住看到哪一集，打开就续播</small></span>
+                  <span class="switch"><input type="checkbox" id="setResumeOnLaunch" /></span>
+                </label>
+                <label class="setting" for="setPin">
+                  <span class="setting-ico"><svg class="ico"><use href="#i-pin"></use></svg></span>
+                  <span class="setting-text"><strong>窗口置顶</strong><small>层级被抢时会自动夺回</small></span>
+                  <span class="switch"><input type="checkbox" id="setPin" /></span>
+                </label>
+                <label class="setting" for="setPass">
+                  <span class="setting-ico"><svg class="ico"><use href="#i-cursor"></use></svg></span>
+                  <span class="setting-text"><strong>鼠标穿透</strong><small>点击直接落到游戏里，按 Alt+L 可关</small></span>
+                  <span class="switch"><input type="checkbox" id="setPass" /></span>
+                </label>
+              </div>
+            </section>
+
+            <section class="card">
+              <div class="card-head">
+                <span class="card-ico"><svg class="ico"><use href="#i-sliders"></use></svg></span>
+                <div class="card-heading">
+                  <h2>显示与声音</h2>
+                  <p>不透明度低一些更不挡视野</p>
+                </div>
+              </div>
+              <div class="card-body">
+                <div class="setting">
+                  <span class="setting-ico"><svg class="ico"><use href="#i-eye"></use></svg></span>
+                  <span class="setting-text"><strong>不透明度</strong><small>整个浮窗的可见程度</small></span>
+                  <span class="setting-ctrl">
+                    <input type="range" id="setOpacity" min="30" max="100" step="1" />
+                    <span class="val" id="opacityVal">100%</span>
+                  </span>
+                </div>
+                <div class="setting">
+                  <span class="setting-ico"><svg class="ico"><use href="#i-volume"></use></svg></span>
+                  <span class="setting-text"><strong>音量</strong><small>视频播放音量，与系统音量独立</small></span>
+                  <span class="setting-ctrl">
+                    <input type="range" id="setVolume" min="0" max="100" step="1" />
+                    <span class="val" id="volumeVal">100%</span>
+                  </span>
+                </div>
+                <p class="tip">
+                  想压在原神上面：游戏内「显示模式」请选 <b>窗口化</b> 或 <b>无边框</b>。独占全屏下任何外部浮窗都无法被系统合成上去。
+                </p>
+              </div>
+            </section>
+          </div>
+
+          <!-- -------------------------------------------------------- 快捷键 -->
+          <div class="pane pane-hotkeys">
+            <div class="pane-head">
+              <h1>全局快捷键</h1>
+              <p>点键位后按下新组合，也可以只按一个键，或直接按鼠标侧键。</p>
+            </div>
+
+            <div id="hkState" class="hk-state"></div>
+
+            <section class="card">
+              <div class="card-head">
+                <span class="card-ico"><svg class="ico"><use href="#i-keyboard"></use></svg></span>
+                <div class="card-heading">
+                  <h2>键位 <span class="hint">游戏全屏时同样生效</span></h2>
+                  <p>带 Alt / Ctrl 的组合是独占的，单键走被动监听</p>
+                </div>
+              </div>
+              <div class="card-body">
+                <div id="hkList" class="hk-list"></div>
+                <button id="btnResetHk" class="ghost block">恢复默认快捷键</button>
+                <p class="tip">
+                  单键（如 <b>F9</b>、<b>J</b>）走系统钩子被动监听：不占用、不拦截按键，但因此游戏里同一个键也会照常生效，建议挑不常用的键。
+                  带 <b>Alt / Ctrl</b> 的组合则是独占的，按下去别的程序收不到。
+                </p>
+              </div>
+            </section>
+          </div>
         </div>
-        <section class="card span2">
-          <h2>视频</h2>
-          <div class="row">
-            <input id="url" type="text" spellcheck="false" placeholder="粘贴 B 站链接 / BV 号，回车启动" />
-            <button id="btnLaunch" class="primary">启动跟跑</button>
-          </div>
-          <div class="meta">
-            <span id="videoMeta">还没载入视频</span>
-          </div>
-          <div class="resume" id="resumeBar" hidden>
-            <span class="resume-tag">上次看到</span>
-            <span class="resume-info" id="resumeInfo">—</span>
-            <button id="btnResume" class="ghost tiny">继续观看</button>
-          </div>
-          <div class="row">
-            <label class="lbl">分 P</label>
-            <select id="part" class="sel"></select>
-            <span class="grow"></span>
-            <span id="floatState" class="badge off">浮窗未启动</span>
-            <button id="btnStop" class="ghost" disabled>关闭浮窗</button>
-          </div>
-        </section>
 
-        <section class="card">
-          <h2>小地图方位</h2>
-          <label class="switch"><input type="checkbox" id="setBearing" /><span>显示方位箭头</span></label>
-          <div class="row">
-            <label class="lbl">标记大小</label>
-            <input type="range" id="setBearingSize" min="60" max="240" step="5" />
-            <span class="val" id="sizeVal">110</span>
-          </div>
-          <button id="btnPickRoi" class="ghost block">① 框选视频里的小地图</button>
-          <button id="btnPlace" class="ghost block">② 拖到我的游戏小地图上</button>
-          <div class="row">
-            <button id="btnDumpRoi" class="ghost grow">抓一帧核对</button>
-            <button id="btnOpenDump" class="ghost grow">打开导出位置</button>
-          </div>
-          <button id="btnClearRoi" class="ghost block">清除本视频标定</button>
-          <p class="tip">
-            框选要在浮窗里做：点了会把浮窗叫起来，拖金色圆环套住视频里的小地图，滚轮调大小。<br />
-            转场 / 特写 / 对话时画面里没有小地图，箭头会自动收起，不是故障。
-          </p>
-        </section>
-
-        <section class="card">
-          <h2>浮窗</h2>
-          <label class="switch"><input type="checkbox" id="setResumeOnLaunch" /><span>下次启动自动继续上次视频</span></label>
-          <label class="switch"><input type="checkbox" id="setPin" /><span>窗口置顶</span></label>
-          <label class="switch"><input type="checkbox" id="setPass" /><span>鼠标穿透（Alt+L 可关）</span></label>
-          <div class="row">
-            <label class="lbl">不透明度</label>
-            <input type="range" id="setOpacity" min="30" max="100" step="1" />
-            <span class="val" id="opacityVal">100%</span>
-          </div>
-          <div class="row">
-            <label class="lbl">音量</label>
-            <input type="range" id="setVolume" min="0" max="100" step="1" />
-            <span class="val" id="volumeVal">100%</span>
-          </div>
-          <p class="tip">
-            想压在原神上面：游戏内「显示模式」请选 <b>窗口化</b> 或 <b>无边框</b>。独占全屏下任何外部浮窗都无法被系统合成上去。
-          </p>
-        </section>
-
-        <section class="card span2">
-          <h2>全局快捷键 <span class="hint">点键位后按下新组合，也可以只按一个键，或直接按鼠标侧键</span></h2>
-          <div id="hkState" class="hk-state"></div>
-          <div id="hkList" class="hk-list"></div>
-          <button id="btnResetHk" class="ghost block">恢复默认快捷键</button>
-          <p class="tip">
-            单键（如 <b>F9</b>、<b>J</b>）走系统钩子被动监听：不占用、不拦截按键，但因此游戏里同一个键也会照常生效，建议挑不常用的键。
-            带 <b>Alt / Ctrl</b> 的组合则是独占的，按下去别的程序收不到。
-          </p>
-        </section>
-      </main>
-
-      <footer class="databar">
-        <span class="datalabel">数据目录</span>
-        <code id="dataDir">—</code>
-        <button id="btnOpenData" class="ghost small">打开</button>
-        <span class="datatip" id="dataTip">设置、标定与登录态都存这里，整个文件夹拷走即可迁移</span>
-      </footer>
-
-      <div id="toast"></div>
+        <footer class="databar">
+          <span class="datalabel"><svg class="ico"><use href="#i-folder"></use></svg> 数据目录</span>
+          <code id="dataDir">—</code>
+          <button id="btnOpenData" class="ghost small">打开</button>
+          <span class="datatip" id="dataTip">设置、标定与登录态都存这里，整个文件夹拷走即可迁移</span>
+        </footer>
+      </section>
     </div>
+
+    <div id="toast"></div>
     <script src="console.js"></script>
   </body>
 </html>
