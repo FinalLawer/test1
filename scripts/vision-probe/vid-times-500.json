@@ -1,0 +1,11 @@
+{
+  "w": 1920,
+  "crop": { "cx": 280, "cy": 266, "size": 363 },
+  "format": "raw",
+  "step": 2,
+  "count": 500,
+  "t0": 0.4,
+  "t1": 330.0,
+  "rawBin": "vidroi500.bin",
+  "rawManifest": "vidroi500.json"
+}

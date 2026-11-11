@@ -1,0 +1,67 @@
+{
+  "name": "genshin-route-buddy",
+  "productName": "原神跟跑助手",
+  "version": "0.2.4",
+  "description": "B站攻略视频悬浮窗：置顶于原神之上，自动读取视频里的角色朝向并在自己的小地图上标出",
+  "main": "src/main.js",
+  "author": "FinalLawer",
+  "license": "MIT",
+  "scripts": {
+    "start": "node scripts/launch.js",
+    "dist": "electron-builder --win",
+    "dist:dir": "electron-builder --win --dir"
+  },
+  "devDependencies": {
+    "electron": "^45.0.0",
+    "electron-builder": "^26.0.0"
+  },
+  "build": {
+    "appId": "com.finallawer.genshin-route-buddy",
+    "productName": "原神跟跑助手",
+    "asar": true,
+    "npmRebuild": false,
+    "asarUnpack": [
+      "**/node_modules/uiohook-napi/**"
+    ],
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "src/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "GenshinRouteBuddy-${version}-${arch}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "原神跟跑助手",
+      "deleteAppDataOnUninstall": false
+    },
+    "portable": {
+      "artifactName": "GenshinRouteBuddy-${version}-portable.${ext}"
+    }
+  },
+  "dependencies": {
+    "uiohook-napi": "^1.5.5"
+  }
+}

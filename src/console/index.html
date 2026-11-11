@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self';"
+    />
+    <title>原神跟跑助手 · 启动器</title>
+    <link rel="stylesheet" href="console.css" />
+  </head>
+  <body>
+    <div id="shell">
+      <header>
+        <div class="head-row">
+          <div class="brand">
+            <span class="dot"></span>
+            <span class="name">原神跟跑助手</span>
+            <span class="ver" id="ver"></span>
+          </div>
+          <div class="row head-account">
+            <span id="accountLine" class="account">未登录 · 只能看预览和标清</span>
+            <button id="btnLogin" class="ghost">登录 / 切换账号</button>
+          </div>
+        </div>
+        <p class="sub">所有设置都在这里配。配好后点「启动跟跑」，浮窗会置顶在原神窗口上面。</p>
+      </header>
+
+      <main>
+        <!-- 未提权时的全局提示：游戏内热键要管理员身份才收得到（Windows UIPI）。
+             放在首屏顶部，而不是塞进下面的快捷键卡片 —— 那张卡在 16:9 窗口里要滚动才看得到。 -->
+        <div id="elevBanner" class="elev-banner" hidden>
+          <span id="elevBannerText"></span>
+          <button id="btnElevate" class="ghost tiny">以管理员身份重启</button>
+        </div>
+        <section class="card span2">
+          <h2>视频</h2>
+          <div class="row">
+            <input id="url" type="text" spellcheck="false" placeholder="粘贴 B 站链接 / BV 号，回车启动" />
+            <button id="btnLaunch" class="primary">启动跟跑</button>
+          </div>
+          <div class="meta">
+            <span id="videoMeta">还没载入视频</span>
+          </div>
+          <div class="resume" id="resumeBar" hidden>
+            <span class="resume-tag">上次看到</span>
+            <span class="resume-info" id="resumeInfo">—</span>
+            <button id="btnResume" class="ghost tiny">继续观看</button>
+          </div>
+          <div class="row">
+            <label class="lbl">分 P</label>
+            <select id="part" class="sel"></select>
+            <span class="grow"></span>
+            <span id="floatState" class="badge off">浮窗未启动</span>
+            <button id="btnStop" class="ghost" disabled>关闭浮窗</button>
+          </div>
+        </section>
+
+        <section class="card">
+          <h2>小地图方位</h2>
+          <label class="switch"><input type="checkbox" id="setBearing" /><span>显示方位箭头</span></label>
+          <div class="row">
+            <label class="lbl">标记大小</label>
+            <input type="range" id="setBearingSize" min="60" max="240" step="5" />
+            <span class="val" id="sizeVal">110</span>
+          </div>
+          <button id="btnPickRoi" class="ghost block">① 框选视频里的小地图</button>
+          <button id="btnPlace" class="ghost block">② 拖到我的游戏小地图上</button>
+          <div class="row">
+            <button id="btnDumpRoi" class="ghost grow">抓一帧核对</button>
+            <button id="btnOpenDump" class="ghost grow">打开导出位置</button>
+          </div>
+          <button id="btnClearRoi" class="ghost block">清除本视频标定</button>
+          <p class="tip">
+            框选要在浮窗里做：点了会把浮窗叫起来，拖金色圆环套住视频里的小地图，滚轮调大小。<br />
+            转场 / 特写 / 对话时画面里没有小地图，箭头会自动收起，不是故障。
+          </p>
+        </section>
+
+        <section class="card">
+          <h2>浮窗</h2>
+          <label class="switch"><input type="checkbox" id="setResumeOnLaunch" /><span>下次启动自动继续上次视频</span></label>
+          <label class="switch"><input type="checkbox" id="setPin" /><span>窗口置顶</span></label>
+          <label class="switch"><input type="checkbox" id="setPass" /><span>鼠标穿透（Alt+L 可关）</span></label>
+          <div class="row">
+            <label class="lbl">不透明度</label>
+            <input type="range" id="setOpacity" min="30" max="100" step="1" />
+            <span class="val" id="opacityVal">100%</span>
+          </div>
+          <div class="row">
+            <label class="lbl">音量</label>
+            <input type="range" id="setVolume" min="0" max="100" step="1" />
+            <span class="val" id="volumeVal">100%</span>
+          </div>
+          <p class="tip">
+            想压在原神上面：游戏内「显示模式」请选 <b>窗口化</b> 或 <b>无边框</b>。独占全屏下任何外部浮窗都无法被系统合成上去。
+          </p>
+        </section>
+
+        <section class="card span2">
+          <h2>全局快捷键 <span class="hint">点键位后按下新组合，也可以只按一个键，或直接按鼠标侧键</span></h2>
+          <div id="hkState" class="hk-state"></div>
+          <div id="hkList" class="hk-list"></div>
+          <button id="btnResetHk" class="ghost block">恢复默认快捷键</button>
+          <p class="tip">
+            单键（如 <b>F9</b>、<b>J</b>）走系统钩子被动监听：不占用、不拦截按键，但因此游戏里同一个键也会照常生效，建议挑不常用的键。
+            带 <b>Alt / Ctrl</b> 的组合则是独占的，按下去别的程序收不到。
+          </p>
+        </section>
+      </main>
+
+      <footer class="databar">
+        <span class="datalabel">数据目录</span>
+        <code id="dataDir">—</code>
+        <button id="btnOpenData" class="ghost small">打开</button>
+        <span class="datatip" id="dataTip">设置、标定与登录态都存这里，整个文件夹拷走即可迁移</span>
+      </footer>
+
+      <div id="toast"></div>
+    </div>
+    <script src="console.js"></script>
+  </body>
+</html>

@@ -1,0 +1,564 @@
+:root {
+  --bg: #0c0d11;
+  --card: rgba(19, 20, 27, 0.92);
+  --line: rgba(255, 255, 255, 0.1);
+  --fg: #e9e7e3;
+  --dim: #93939f;
+  --gold: #e7c98b;
+  --gold-dim: rgba(231, 201, 139, 0.16);
+  --green: #6fd08c;
+  --danger: #ff6b6b;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body {
+  height: 100%;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC", system-ui, sans-serif;
+  font-size: 12.5px;
+  user-select: none;
+}
+
+body {
+  overflow-y: auto;
+}
+
+#shell {
+  max-width: 940px;
+  margin: 0 auto;
+  padding: 22px 24px 40px;
+}
+
+/* ------------------------------------------------------------------ 头部 */
+
+header {
+  margin-bottom: 18px;
+}
+
+.head-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.head-account {
+  margin-left: auto;
+  gap: 10px;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 15px;
+  letter-spacing: 0.4px;
+}
+
+.brand .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--gold);
+  box-shadow: 0 0 10px rgba(231, 201, 139, 0.7);
+}
+
+.brand .ver {
+  font-size: 10.5px;
+  color: var(--dim);
+  padding: 1px 6px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+}
+
+.sub {
+  margin-top: 7px;
+  color: var(--dim);
+  font-size: 11.5px;
+  line-height: 1.6;
+}
+
+/* ------------------------------------------------------------------ 布局 */
+
+main {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 14px 15px 15px;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.card.span2 {
+  grid-column: span 2;
+}
+
+h2 {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--gold);
+  letter-spacing: 0.6px;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+h2 .hint {
+  color: var(--dim);
+  font-weight: 400;
+  font-size: 10.5px;
+  letter-spacing: 0;
+}
+
+/* ------------------------------------------------------------------ 控件 */
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+}
+
+.grow {
+  flex: 1 1 auto;
+}
+
+.lbl {
+  color: var(--dim);
+  flex: 0 0 auto;
+  min-width: 52px;
+}
+
+input[type="text"],
+.sel {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 30px;
+  padding: 0 9px;
+  border-radius: 7px;
+  border: 1px solid var(--line);
+  background: rgba(9, 10, 14, 0.9);
+  color: var(--fg);
+  font: inherit;
+  outline: none;
+}
+
+input[type="text"]:focus,
+.sel:focus {
+  border-color: rgba(231, 201, 139, 0.5);
+}
+
+.sel {
+  flex: 0 0 210px;
+  cursor: pointer;
+  /* 原生下拉列表在 Windows 浅色主题下是白底，近白文字会看不见 */
+  color-scheme: dark;
+  background: #0d0e13;
+}
+
+.sel option {
+  background: #0d0e13;
+  color: var(--fg);
+}
+
+.sel option:checked {
+  background: #2f4a86;
+  color: #fff;
+}
+
+.sel:disabled {
+  color: var(--dim);
+}
+
+button {
+  height: 30px;
+  padding: 0 13px;
+  border-radius: 7px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--fg);
+  font: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: background 0.14s ease, border-color 0.14s ease;
+}
+
+button:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+button.primary {
+  background: linear-gradient(180deg, #e8cb8f, #d5b171);
+  border-color: #d5b171;
+  color: #201a10;
+  font-weight: 600;
+}
+
+button.primary:hover:not(:disabled) {
+  background: linear-gradient(180deg, #f0d69b, #ddb97a);
+}
+
+button.ghost {
+  background: transparent;
+  color: var(--fg);
+}
+
+button.block {
+  width: 100%;
+}
+
+/* 提权提示条里的按钮：贴在文字右侧，不抢视线但要一眼看见 */
+button.tiny {
+  flex: 0 0 auto;
+  padding: 4px 9px;
+  font-size: 11px;
+  white-space: nowrap;
+  border: 1px solid rgba(224, 163, 58, 0.45);
+}
+
+/* 未提权横幅：横跨整行、贴在首屏最上方，用户一打开就能看见 */
+.elev-banner {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: #e0a33a;
+  background: rgba(224, 163, 58, 0.1);
+  border: 1px solid rgba(224, 163, 58, 0.28);
+}
+
+.elev-banner > span {
+  flex: 1 1 auto;
+}
+
+/* 用了 display:flex 之后，[hidden] 的 display:none 会被盖掉，必须显式兜一层 */
+.elev-banner[hidden] {
+  display: none;
+}
+
+input[type="range"] {
+  flex: 1 1 auto;
+  height: 3px;
+  appearance: none;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.14);
+  outline: none;
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  appearance: none;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: var(--gold);
+  border: 2px solid #14151b;
+  cursor: pointer;
+}
+
+.val {
+  flex: 0 0 44px;
+  text-align: right;
+  color: var(--gold);
+  font-variant-numeric: tabular-nums;
+}
+
+.switch {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 26px;
+  cursor: pointer;
+}
+
+.switch input {
+  appearance: none;
+  width: 32px;
+  height: 17px;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.14);
+  position: relative;
+  cursor: pointer;
+  transition: background 0.16s ease;
+  flex: 0 0 auto;
+}
+
+.switch input::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: #b9b9c4;
+  transition: transform 0.16s ease, background 0.16s ease;
+}
+
+.switch input:checked {
+  background: var(--gold-dim);
+}
+
+.switch input:checked::after {
+  transform: translateX(15px);
+  background: var(--gold);
+}
+
+.meta {
+  color: var(--dim);
+  font-size: 11.5px;
+  line-height: 1.5;
+  min-height: 16px;
+}
+
+.meta b {
+  color: var(--fg);
+  font-weight: 500;
+}
+
+/* 「上次看到」：一眼看出片名 / 第几 P / 什么时候看的 */
+.resume {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 30px;
+  padding: 5px 9px;
+  border: 1px solid var(--gold-dim);
+  border-radius: 7px;
+  background: rgba(231, 201, 139, 0.06);
+  font-size: 11.5px;
+}
+
+/* display:flex 会盖掉 [hidden] 的 display:none，必须显式兜一层 */
+.resume[hidden] {
+  display: none;
+}
+
+.resume-tag {
+  flex: 0 0 auto;
+  color: var(--gold);
+  font-weight: 600;
+  letter-spacing: 0.4px;
+}
+
+.resume-info {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--fg);
+}
+
+.resume-info b {
+  font-weight: 500;
+}
+
+.resume-info .dim {
+  color: var(--dim);
+}
+
+.badge {
+  flex: 0 0 auto;
+  padding: 2px 9px;
+  border-radius: 20px;
+  font-size: 10.5px;
+  border: 1px solid var(--line);
+  color: var(--dim);
+}
+
+.badge.on {
+  color: var(--green);
+  border-color: rgba(111, 208, 140, 0.45);
+  background: rgba(111, 208, 140, 0.1);
+}
+
+.badge.off {
+  color: var(--dim);
+}
+
+.account {
+  color: var(--dim);
+  font-size: 11.5px;
+}
+
+.account b {
+  color: var(--fg);
+}
+
+.tip {
+  color: var(--dim);
+  font-size: 10.8px;
+  line-height: 1.7;
+}
+
+.tip b {
+  color: #cfc9bd;
+  font-weight: 500;
+}
+
+/* ------------------------------------------------------------------ 热键 */
+
+.hk-list {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px 18px;
+}
+
+.hk-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 3px 0;
+}
+
+.hk-row > span {
+  color: var(--dim);
+  font-size: 11.5px;
+}
+
+.kbd {
+  height: 25px;
+  min-width: 92px;
+  padding: 0 9px;
+  font-size: 11px;
+  color: var(--gold);
+  background: rgba(231, 201, 139, 0.07);
+  border: 1px solid rgba(231, 201, 139, 0.28);
+  border-radius: 6px;
+  font-variant-numeric: tabular-nums;
+}
+
+.kbd.capturing {
+  color: #201a10;
+  background: var(--gold);
+  border-color: var(--gold);
+}
+
+/* ------------------------------------------------------------------ toast */
+
+#toast {
+  position: fixed;
+  left: 50%;
+  bottom: 26px;
+  transform: translate(-50%, 12px);
+  max-width: 520px;
+  padding: 9px 16px;
+  border-radius: 8px;
+  background: rgba(24, 25, 32, 0.98);
+  border: 1px solid var(--line);
+  color: var(--fg);
+  font-size: 11.5px;
+  line-height: 1.5;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.18s ease, transform 0.18s ease;
+  z-index: 10;
+}
+
+#toast.show {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+#toast.bad {
+  border-color: rgba(255, 107, 107, 0.5);
+  color: #ffc9c9;
+}
+
+/* -------------------------------------------------------------- 数据目录栏 */
+
+.databar {
+  /* 内容变多要滚动时，这一条始终贴在底部，用户随时能看到数据存在哪 */
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 16px;
+  padding: 10px 13px;
+  border-radius: 9px;
+  border: 1px solid var(--line);
+  background: rgba(16, 17, 23, 0.97);
+  backdrop-filter: blur(6px);
+  font-size: 11.5px;
+  color: var(--dim);
+}
+
+.datalabel {
+  flex: 0 0 auto;
+  color: var(--gold);
+  letter-spacing: 0.3px;
+}
+
+#dataDir {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 11px;
+  color: var(--fg);
+  user-select: text;
+}
+
+.databar .small {
+  height: 24px;
+  padding: 0 10px;
+  font-size: 11.5px;
+}
+
+.datatip {
+  flex: 0 0 auto;
+  color: var(--dim);
+  opacity: 0.8;
+}
+
+/* -------------------------------------------------------- 单键监听状态行 */
+
+.hk-state {
+  margin: 8px 0 10px;
+  padding: 7px 10px;
+  border-radius: 7px;
+  font-size: 11.5px;
+  line-height: 1.5;
+  background: rgba(255, 255, 255, 0.035);
+  color: var(--dim);
+}
+
+.hk-state.ok {
+  color: #7fc8a0;
+  background: rgba(80, 200, 140, 0.08);
+}
+
+.hk-state.bad {
+  color: #e0a33a;
+  background: rgba(224, 163, 58, 0.1);
+}

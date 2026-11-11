@@ -1,0 +1,758 @@
+:root {
+  --bg: #0c0d11;
+  --panel: rgba(17, 18, 24, 0.9);
+  --line: rgba(255, 255, 255, 0.1);
+  --fg: #e9e7e3;
+  --dim: #93939f;
+  --gold: #e7c98b;
+  --gold-dim: rgba(231, 201, 139, 0.16);
+  --danger: #ff6b6b;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body {
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC", system-ui, sans-serif;
+  font-size: 12px;
+  user-select: none;
+  cursor: default;
+}
+
+#app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+/* ---------------------------------------------------------------- 标题栏 */
+
+#titlebar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 30px;
+  flex: 0 0 30px;
+  padding: 0 4px 0 9px;
+  background: linear-gradient(180deg, rgba(24, 25, 32, 0.96), rgba(16, 17, 22, 0.96));
+  border-bottom: 1px solid var(--line);
+  -webkit-app-region: drag;
+  overflow: hidden;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  color: var(--gold);
+  white-space: nowrap;
+}
+
+.brand .dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--gold);
+  box-shadow: 0 0 7px rgba(231, 201, 139, 0.75);
+}
+
+.vtitle {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--dim);
+  font-size: 11px;
+}
+
+.tools {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: 0 0 auto;
+  -webkit-app-region: no-drag;
+}
+
+/* ------------------------------------------------------------------ 通用 */
+
+.ico {
+  -webkit-app-region: no-drag;
+  width: 24px;
+  height: 22px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--dim);
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+
+.ico:hover {
+  background: rgba(255, 255, 255, 0.09);
+  color: var(--fg);
+}
+
+.ico.danger:hover {
+  background: rgba(255, 107, 107, 0.18);
+  color: var(--danger);
+}
+
+/* 原生 <select> 的展开列表由 Chromium/系统绘制：Windows 浅色主题下是白底，
+ * 而文字会继承 color。以前这里只给了近白的 var(--fg) + 半透明白背景，
+ * 结果就是「白底白字」完全看不清。color-scheme 让原生控件走深色，
+ * option 再显式给一遍深底浅字兜底，两者互相独立。 */
+.sel {
+  -webkit-app-region: no-drag;
+  max-width: 130px;
+  height: 21px;
+  padding: 0 4px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  color-scheme: dark;
+  background: #23252c;
+  color: var(--fg);
+  font-size: 11px;
+  outline: none;
+  cursor: pointer;
+}
+
+.sel option {
+  background: #23252c;
+  color: var(--fg);
+}
+
+.sel option:checked {
+  background: #2f4a86;
+  color: #fff;
+}
+
+.sel.wide {
+  max-width: 148px;
+}
+
+.sel.hidden {
+  display: none;
+}
+
+/* 登录状态胶囊 */
+.chip {
+  -webkit-app-region: no-drag;
+  height: 20px;
+  min-width: 40px;
+  padding: 0 8px;
+  border: 1px solid rgba(231, 201, 139, 0.45);
+  border-radius: 10px;
+  background: rgba(231, 201, 139, 0.12);
+  color: var(--gold);
+  font-size: 10.5px;
+  line-height: 1;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.12s, border-color 0.12s;
+}
+
+.chip:hover {
+  background: rgba(231, 201, 139, 0.24);
+}
+
+.chip.on {
+  min-width: 18px;
+  width: 18px;
+  padding: 0;
+  border-color: rgba(120, 200, 140, 0.5);
+  background: rgba(120, 200, 140, 0.14);
+  color: #7ec894;
+  font-size: 9px;
+}
+
+.account {
+  margin: 2px 0 4px;
+  font-size: 10.5px;
+  color: var(--dim);
+  line-height: 1.5;
+}
+
+.account.ok {
+  color: #8fce9f;
+}
+
+button.primary {
+  height: 24px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 5px;
+  background: var(--gold);
+  color: #1a1508;
+  font-weight: 700;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+button.primary:hover {
+  filter: brightness(1.08);
+}
+
+button.ghost {
+  height: 24px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--dim);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+button.ghost:hover {
+  color: var(--fg);
+  border-color: rgba(255, 255, 255, 0.25);
+}
+
+button.ghost.block {
+  width: 100%;
+  margin-top: 6px;
+}
+
+/* ---------------------------------------------------------------- 地址栏 */
+
+#urlbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  background: rgba(13, 14, 19, 0.96);
+  border-bottom: 1px solid var(--line);
+}
+
+#urlbar.hidden {
+  display: none;
+}
+
+#urlInput {
+  flex: 1;
+  min-width: 0;
+  height: 24px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--fg);
+  font-size: 11px;
+  outline: none;
+  user-select: text;
+}
+
+#urlInput:focus {
+  border-color: rgba(231, 201, 139, 0.55);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+/* ------------------------------------------------------------------ 舞台 */
+
+#stage {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  background: #000;
+  display: flex;
+}
+
+#stage webview {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  border: 0;
+}
+
+#placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  color: var(--dim);
+  background: radial-gradient(circle at 50% 42%, rgba(231, 201, 139, 0.07), transparent 62%), #0a0b0f;
+  pointer-events: none;
+  z-index: 2;
+}
+
+#placeholder.hidden {
+  display: none;
+}
+
+#placeholder .ph-icon {
+  font-size: 26px;
+  color: var(--gold);
+  opacity: 0.8;
+  margin-bottom: 2px;
+}
+
+#placeholder p {
+  font-size: 12px;
+  color: var(--fg);
+}
+
+#placeholder span {
+  font-size: 10.5px;
+  color: #6c6c78;
+}
+
+/* ---------------------------------------------------------------- 控制条 */
+
+#controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 34px;
+  flex: 0 0 34px;
+  padding: 0 9px;
+  background: linear-gradient(180deg, rgba(16, 17, 22, 0.94), rgba(12, 13, 17, 0.99));
+  border-top: 1px solid var(--line);
+  transition: opacity 0.2s, transform 0.2s;
+}
+
+body:not(.ui) #controls {
+  opacity: 0;
+  transform: translateY(8px);
+  pointer-events: none;
+}
+
+.play {
+  width: 26px;
+  height: 24px;
+  border: 0;
+  border-radius: 6px;
+  background: var(--gold-dim);
+  color: var(--gold);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.play:hover {
+  background: rgba(231, 201, 139, 0.28);
+}
+
+.time {
+  font-variant-numeric: tabular-nums;
+  font-size: 10.5px;
+  color: var(--dim);
+  white-space: nowrap;
+}
+
+.progress {
+  position: relative;
+  flex: 1;
+  height: 14px;
+  cursor: pointer;
+}
+
+.progress::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 4px;
+  transform: translateY(-50%);
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.bar {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  height: 4px;
+  width: 0;
+  transform: translateY(-50%);
+  border-radius: 2px;
+  background: var(--gold);
+  transition: width 0.08s linear;
+}
+
+.progress.dragging .bar {
+  transition: none;
+}
+
+.knob {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 9px;
+  height: 9px;
+  margin-left: -4.5px;
+  border-radius: 50%;
+  background: #fff;
+  transform: translateY(-50%) scale(0);
+  transition: transform 0.12s, left 0.08s linear;
+}
+
+.progress:hover .knob,
+.progress.dragging .knob {
+  transform: translateY(-50%) scale(1);
+}
+
+.progress.dragging .knob {
+  transition: transform 0.12s;
+}
+
+.mini {
+  min-width: 34px;
+  height: 22px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--dim);
+  font-size: 10.5px;
+  cursor: pointer;
+}
+
+.mini:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--fg);
+}
+
+/* ------------------------------------------------------------ 缩放手柄 */
+
+#grip {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 14px;
+  height: 14px;
+  cursor: nwse-resize;
+  z-index: 20;
+  background: linear-gradient(135deg, transparent 46%, rgba(255, 255, 255, 0.28) 50%, transparent 54%),
+    linear-gradient(135deg, transparent 68%, rgba(255, 255, 255, 0.18) 72%, transparent 76%);
+}
+
+/* ------------------------------------------------------------------ 提示 */
+
+#toast {
+  position: absolute;
+  left: 50%;
+  bottom: 46px;
+  transform: translate(-50%, 6px);
+  max-width: 84%;
+  padding: 6px 12px;
+  border-radius: 6px;
+  background: rgba(28, 29, 36, 0.96);
+  border: 1px solid var(--line);
+  color: var(--fg);
+  font-size: 11px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.18s, transform 0.18s;
+  z-index: 60;
+}
+
+#toast.show {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+/* ------------------------------------------------------------------ 抽屉 */
+
+.drawer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 286px;
+  display: flex;
+  flex-direction: column;
+  background: var(--panel);
+  backdrop-filter: blur(14px);
+  border-left: 1px solid var(--line);
+  transform: translateX(102%);
+  transition: transform 0.22s ease;
+  z-index: 50;
+}
+
+.drawer.open {
+  transform: translateX(0);
+}
+
+.drawer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 34px;
+  padding: 0 6px 0 12px;
+  border-bottom: 1px solid var(--line);
+  color: var(--gold);
+  font-weight: 600;
+}
+
+.drawer-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px 12px 16px;
+}
+
+.drawer-body::-webkit-scrollbar {
+  width: 6px;
+}
+
+.drawer-body::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.14);
+  border-radius: 3px;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  height: 28px;
+  color: var(--fg);
+  font-size: 11.5px;
+}
+
+.row input[type="range"] {
+  width: 108px;
+  accent-color: var(--gold);
+  cursor: pointer;
+}
+
+.row input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  accent-color: var(--gold);
+  cursor: pointer;
+}
+
+.sep {
+  height: 1px;
+  margin: 10px 0;
+  background: var(--line);
+}
+
+.sub {
+  font-size: 10.5px;
+  color: var(--dim);
+  margin-bottom: 6px;
+}
+
+/* 方位标记的识别区域输入行 */
+/* ------------------------------------------- 小地图识别区域框选（标定） */
+#calib {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  cursor: crosshair;
+}
+
+#calib.hidden {
+  display: none;
+}
+
+.calib-box {
+  position: absolute;
+  z-index: 1;
+  border: 1.5px dashed var(--gold);
+  border-radius: 50%;
+  /* 把圆环以外的画面压暗，只留出小地图那一片，方便对准 */
+  box-shadow: 0 0 0 9999px rgba(8, 9, 12, 0.42);
+  cursor: grab;
+  touch-action: none;
+}
+
+.calib-box:active {
+  cursor: grabbing;
+}
+
+.calib-box::before,
+.calib-box::after {
+  content: '';
+  position: absolute;
+  background: rgba(231, 201, 139, 0.6);
+}
+
+.calib-box::before {
+  left: 50%;
+  top: -8px;
+  width: 1px;
+  height: 16px;
+  transform: translateX(-0.5px);
+}
+
+.calib-box::after {
+  top: 50%;
+  left: -8px;
+  height: 1px;
+  width: 16px;
+  transform: translateY(-0.5px);
+}
+
+.calib-tag {
+  position: absolute;
+  left: 50%;
+  top: -24px;
+  transform: translateX(-50%);
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: rgba(10, 11, 15, 0.88);
+  color: var(--gold);
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.calib-bar {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  background: rgba(16, 17, 22, 0.96);
+  border: 1px solid var(--line);
+  font-size: 10.5px;
+  color: var(--dim);
+}
+
+.calib-bar span {
+  flex: 1 1 auto;
+}
+
+/* ------------------------------------------------- 全屏（沉浸）状态
+   窗口全屏时视频铺满整个客户区，标题栏和底部控制条改成浮层：
+   平时淡出，鼠标移上去就出现。设置入口因此永远不会被画面盖住。 */
+
+#app.immersive #titlebar,
+#app.immersive #controls {
+  position: absolute;
+  left: 0;
+  right: 0;
+  z-index: 40;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+#app.immersive #titlebar {
+  top: 0;
+}
+
+#app.immersive #controls {
+  bottom: 0;
+  transform: none;
+}
+
+#app.immersive #titlebar:hover,
+#app.immersive #titlebar.show,
+#app.immersive #controls:hover {
+  opacity: 1;
+}
+
+/* 地址栏浮在标题栏下方，避免全屏时把视频挤下去 */
+#app.immersive #urlbar {
+  position: absolute;
+  top: 30px;
+  left: 0;
+  right: 0;
+  z-index: 41;
+}
+
+/* 全屏时右下角的缩放手柄只会碍事 */
+#app.immersive #grip {
+  display: none;
+}
+
+/* 尺寸读数：不参与拉伸，跟在提示文字后面 */
+#calibSize {
+  flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
+  color: var(--gold);
+}
+
+.hk-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.hk-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--dim);
+}
+
+.hk-row .kbd {
+  min-width: 78px;
+  padding: 3px 7px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--fg);
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 10.5px;
+  text-align: center;
+  cursor: pointer;
+}
+
+.hk-row .kbd:hover {
+  border-color: rgba(231, 201, 139, 0.5);
+}
+
+.hk-row .kbd.capturing {
+  border-color: var(--gold);
+  color: var(--gold);
+  animation: pulse 1s infinite;
+}
+
+.hk-row .kbd.bad {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+.tip {
+  margin-top: 12px;
+  padding: 8px 9px;
+  border-radius: 6px;
+  background: rgba(231, 201, 139, 0.07);
+  border: 1px solid rgba(231, 201, 139, 0.18);
+  color: #b9b3a4;
+  font-size: 10.5px;
+  line-height: 1.6;
+}
+
+.tip b {
+  color: var(--gold);
+}

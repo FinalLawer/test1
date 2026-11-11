@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; script-src 'self';"
+    />
+    <title>原神跟跑助手</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div id="app">
+      <header id="titlebar">
+        <div class="brand"><span class="dot"></span><span class="name">跟跑助手</span></div>
+        <div class="vtitle" id="videoTitle"></div>
+        <div class="tools">
+          <select id="partSelect" class="sel" title="分 P"></select>
+          <button id="btnLink" class="ico" title="地址栏">🔗</button>
+          <button id="btnSettings" class="ico" title="打开启动器">⚙</button>
+          <button id="btnMin" class="ico" title="最小化">—</button>
+          <button id="btnClose" class="ico danger" title="关闭">✕</button>
+        </div>
+      </header>
+
+      <div id="urlbar">
+        <input id="urlInput" type="text" spellcheck="false" placeholder="粘贴 B 站链接 / BV 号，回车载入" />
+        <button id="btnLoad" class="primary">载入</button>
+      </div>
+
+      <main id="stage">
+        <div id="placeholder">
+          <div class="ph-icon">⛰</div>
+          <p>粘贴一个 B 站攻略视频链接</p>
+          <span>支持 BV 号、av 号、b23.tv 短链、带分 P 的链接</span>
+        </div>
+
+        <div id="calib" class="hidden">
+          <div id="calibBox" class="calib-box">
+            <span class="calib-tag">小地图圆心</span>
+          </div>
+          <div class="calib-bar">
+            <span id="calibHint">滚轮缩放圆环，直到它刚好包住小地图圆盘</span>
+            <span id="calibSize">—</span>
+            <button id="calibCancel" class="ghost">取消</button>
+            <button id="calibOk" class="primary">完成</button>
+          </div>
+        </div>
+      </main>
+
+      <footer id="controls">
+        <button id="btnPlay" class="play" title="播放 / 暂停">▶</button>
+        <span id="timeText" class="time">00:00 / 00:00</span>
+        <div id="progress" class="progress"><div id="bar" class="bar"></div><div id="knob" class="knob"></div></div>
+        <button id="btnSpeed" class="mini" title="倍速">1.0×</button>
+        <button id="btnMute" class="mini" title="静音">🔊</button>
+      </footer>
+
+      <div id="grip" title="拖动调整大小"></div>
+      <div id="toast"></div>
+    </div>
+    <script src="app.js"></script>
+  </body>
+</html>
