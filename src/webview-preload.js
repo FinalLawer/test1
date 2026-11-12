@@ -77,6 +77,8 @@ function bind(v) {
     for (const ev of EVENTS) video.removeEventListener(ev, onEvent, true);
   }
   video = v;
+  // 换了视频元素：小地图布局可能完全不同，自动定心从头学
+  resetAutoCenter('切换视频元素');
   for (const ev of EVENTS) v.addEventListener(ev, onEvent, true);
   console.log('[跟跑助手] 已接管视频元素', v.currentSrc || v.src || '');
   push(true);
@@ -190,6 +192,31 @@ const BEARING = {
    *            且高 conf 会绕过平滑直接上屏，必须等下一个有效帧复核。
    */
   view: { theta: -1, conf: 0, src: '', t: 0, sent: -1, pending: -1 },
+  /**
+   * 自动定心（2026-11-12）。
+   *
+   * 背景：箭头通道对圆心极度敏感 —— 1080P 下偏离最佳点 ±2px 还基本可用，
+   * ±3px 有效率从 0.88 掉到 0.45，±4px 只剩 0.19。而用户用手拖圆环根本做不到
+   * 这个精度（实测打包版默认 SEED 偏 −4.7px 时有效率只有 0.24）。
+   *
+   * 做法：**用户点「③ 自动定心」才跑**，跑一次、算准就停，不会自己再触发。
+   * 从画面本身学：青色箭头连通块的质心稳定落在支点后方 0.139×√面积 处
+   * （452 帧实测，标准差 0.011）。单帧看有「把尾巴当鼻尖」的假解（相隔约 120°，
+   * 置信度分不开），但真支点每帧都在同一位置、假解随朝向移动，多帧投票就能分开。
+   *
+   *   active  true = 正在定心（只在手动触发后短暂为真）
+   *   trim    学到的圆心修正（视频像素，相对用户框选的点）；成功后立刻生效，
+   *           随后由主进程把修正写进该视频的标定并回传，trim 归零
+   *   votes   本次会话里各候选支点投出的票
+   */
+  auto: {
+    active: false,
+    trim: { x: 0, y: 0 },
+    votes: [],
+    attempts: 0,
+    lastAttemptAt: 0,
+    deadline: 0
+  },
   // 最近几帧的原始角度，用来做圆形中值（剔除「认成三角形另一个角」这类野值）
   raw: [],
   invalidSince: 0,
@@ -223,7 +250,13 @@ function bearingCanvas(size) {
  *    放大到 1.2 倍是错的：那样会把传送锚点、神瞳这些青色图标一起框进来，
  *    它们比箭头伸得更远，会让「最远点就是尖端」这类判据整体失效。
  */
-function grabCenter(roi, scale = 0.62, cap = 320) {
+/**
+ * 算出「以 roi 圆心为中心」的采样窗：边长、取整后的左上角、采样步长。
+ *
+ * 两个通道共用同一套换算，裁剪小窗时才能和单独抓的逐像素对齐。
+ * 返回 null 表示视频还没就绪，或者窗口已经贴到画面外。
+ */
+function centerWindow(roi, scale, cap, offX = 0, offY = 0) {
   if (!video || !video.videoWidth || !video.videoHeight) return null;
 
   const vw = video.videoWidth;
@@ -238,26 +271,66 @@ function grabCenter(roi, scale = 0.62, cap = 320) {
   // 「越往圆心越白」这个最本质的证据根本没展开。故扇形单独用大窗口。
   // 大窗口向画面边界让位，保证窗口始终以玩家为几何中心（极坐标不能偏）。
   const want = Math.round(clamp(mapR * scale, 64, cap));
-  const roomX = 2 * Math.min(roi.cx, 1 - roi.cx) * vw;
-  const roomY = 2 * Math.min(roi.cy, 1 - roi.cy) * vh;
+  // 自动定心会带一个像素级修正；修正为 0 时和旧版逐像素相同
+  const cx = roi.cx * vw + offX;
+  const cy = roi.cy * vh + offY;
+  const roomX = 2 * Math.min(cx, vw - cx);
+  const roomY = 2 * Math.min(cy, vh - cy);
   const size = Math.max(64, Math.min(want, vw, vh, Math.floor(Math.min(roomX, roomY))));
-  const sx = Math.round(roi.cx * vw - size / 2);
-  const sy = Math.round(roi.cy * vh - size / 2);
+  const sx = Math.round(cx - size / 2);
+  const sy = Math.round(cy - size / 2);
 
   if (sx < 0 || sy < 0 || sx + size > vw || sy + size > vh) return null;
 
-  const ctx = bearingCanvas(size);
+  // 512² 全采是 26 万像素，30fps 下太重；隔点采样把像素数压到 6.5 万以内，
+  // 且因为是整数采样点，颜色值仍然是原始值（不像缩放会插值出新颜色）。
+  return { size, sx, sy, step: size > 320 ? 2 : 1 };
+}
+
+function grabCenter(roi, scale = 0.62, cap = 320, offX = 0, offY = 0) {
+  const w = centerWindow(roi, scale, cap, offX, offY);
+  if (!w) return null;
+
+  const ctx = bearingCanvas(w.size);
   try {
-    ctx.clearRect(0, 0, size, size);
-    ctx.drawImage(video, sx, sy, size, size, 0, 0, size, size);
-    // 512² 全采是 26 万像素，30fps 下太重；隔点采样把像素数压到 6.5 万以内，
-    // 且因为是整数采样点，颜色值仍然是原始值（不像缩放会插值出新颜色）。
-    const step = size > 320 ? 2 : 1;
-    return { img: ctx.getImageData(0, 0, size, size), size, step };
+    ctx.clearRect(0, 0, w.size, w.size);
+    ctx.drawImage(video, w.sx, w.sy, w.size, w.size, 0, 0, w.size, w.size);
+    // sx/sy 一并带出去：裁剪小窗要靠它算「大窗里的小窗原点」
+    return { img: ctx.getImageData(0, 0, w.size, w.size), size: w.size, step: w.step, sx: w.sx, sy: w.sy };
   } catch {
     // 视频源跨域时 canvas 会被污染，读像素会抛 SecurityError
     return null;
   }
+}
+
+/**
+ * 从已经抓好的大窗里裁出小窗（同一个 ROI、同一个圆心，只是边长不同）。
+ *
+ * 为什么要这么做：`drawImage(video)` 的耗时几乎**与区域大小无关** ——
+ * 本机实测抓 64px 和抓 512px 都是约 10ms，而每个区域原本每帧要抓两次
+ * （箭头 0.62R + 扇形 1.5R）。扇形大窗本来就完整包住箭头小窗，
+ * 所以小窗只要按**取整后的实际起点差**做一次内存复制：
+ * 像素与单独抓逐字节相同，识别结果不变，每帧少一次约 10ms 的读帧。
+ *
+ * 注意起点差不能拿 (bigSize - smallSize) / 2 推：两个窗口各自 round 过，
+ * 差 1px 整块像素就错位了，所以直接用两次算出来的 sx/sy 相减。
+ */
+function cropCenterWindow(big, roi, scale = 0.62, cap = 320, offX = 0, offY = 0) {
+  const w = centerWindow(roi, scale, cap, offX, offY);
+  if (!w) return null;
+
+  const ox = w.sx - big.sx;
+  const oy = w.sy - big.sy;
+  if (ox < 0 || oy < 0 || ox + w.size > big.size || oy + w.size > big.size) return null;
+
+  const src = big.img.data;
+  const dst = new Uint8ClampedArray(w.size * w.size * 4);
+  const rowBytes = w.size * 4;
+  for (let y = 0; y < w.size; y += 1) {
+    const off = ((oy + y) * big.size + ox) * 4;
+    dst.set(src.subarray(off, off + rowBytes), y * rowBytes);
+  }
+  return { img: { data: dst, width: w.size, height: w.size }, size: w.size, step: w.step };
 }
 
 /**
@@ -687,329 +760,319 @@ function angDiff(a, b) {
  *
  * 原神小地图在角色周围铺一个白色半透明的扇形，表示**镜头**的视野朝向。
  * 它和青色箭头是两件独立的事：箭头是「人往哪走」，扇形是「镜头朝哪看」。
- * 站着转视角时扇形转、箭头不转；跑动时两者基本一致。所以它不能替代箭头，
- * 但可以做两件事：
- *   · 几何判据模糊时（比如只有两个角、鼻子被图标压住）拿它打破平局
- *   · 几何整帧失效时当兜底，总比箭头消失强
+ * 站着转视角时扇形转、箭头不转；跑动时两者基本一致。
  *
- * 纯像素统计 + 结构判据，**不设任何地图底色 / 白度 / 饱和度阈值**：
- *   1. 只采亮度；不透明纯白（地图标点核心）按同层均值抹掉
- *      —— 这是唯一保留的颜色判据，因为图标永远 250+ 且中性，与底色无关
- *   2. 每格每段减去「同层相邻角度带」均值，得到底色无关的局部抬升
- *   3. 72 个候选中心 × 固定 90° 模板，逐径向层算局部对比
- *   4. 要求：各层同向为正、内浓外淡、内侧 4 层强度接近（等角宽楔形）、
- *      胜出方向明显强于次高峰 —— 全部是相对量/结构量
+ * 2026-11-12 重写：从「90° 窗口比两侧亮」改成「两条半径边 + 白膜 alpha 一致性」。
  *
- * 为什么不用底色：不同地图区域（深蓝水 / 黄绿草地 / 灰白岩石 / 雪地）的
- * 底色差异极大且无法预测。半透明白叠在深蓝水上只是把 (48,104,202) 提亮成
- * 灰蓝 (100,130,160)，仍比旁边黄绿陆地暗；任何「够亮 / 够白 / 低饱和」
- * 的绝对阈值都会让整片扇形消失。用户实拍帧实测白度命中率 0%。
+ * 旧法为什么不准（500 帧真实视频逐帧目视核对）：
+ *   它拿扇形窗口和**相距几十度**的两侧角度带比亮度。可陆地 (146,170,108) 本来就比
+ *   水域 (40,93,103) 亮 80 级，而白膜只把水提亮到 (112,150,160) —— 底色的明暗差
+ *   远大于白膜本身，海岸线一斜穿，「最亮的 90°」就落在陆地上而不是扇形上；
+ *   白色标点的抗锯齿灰边又正好是「半透明的白」，和白膜在亮度上分不开。
+ *   结果是成段地偏 15~55°、甚至指到反方向，且因为连续多帧错得一致，
+ *   时序层的「孤立脉冲」判据也拦不住。
  *
- * 采样窗口必须覆盖 0.24R~0.72R：几何通道那个 0.62R 的中心小窗只看得到
- * 0.10R~0.30R，那里 alpha 还在平台期，「越往圆心越白」根本没展开。
+ * 实测到的渲染事实（同一视频，水域 / 陆地各取扇形内外相邻点）：
+ *   · 白膜是线性混合 dst = src + α·(255 − src)，三通道的 α 相等
+ *       水  (40,93,103)   → (112,150,160)：α = 0.33 / 0.35 / 0.38
+ *       陆  (146,170,108) → (185,198,156)：α = 0.36 / 0.33 / 0.33
+ *   · α 随半径近似线性衰减：0.17R 处约 0.35，0.72R 处约 0.12
+ *   · 两条半径边是硬边，从圆心一直通到小地图边缘
+ *
+ * 所以新法只看**紧挨着的两个角度带**（各 6°、中间跳过 3°）之间的阶跃：
+ *   1. 紧邻两侧几乎总是同一种底色，底色本身被差分消掉 —— 不需要知道底色是什么
+ *   2. 把阶跃换算成 α = Δ/(255 − 暗侧)，并要求三通道解出同一个 α。
+ *      白膜满足；水→陆这类底色边界三通道各走各的（R +106 / B +5），直接判 0
+ *   3. 同一角度上要求「可见径向层的严格多数、且至少 5 层」同号：
+ *      半径边贯穿全程；海岸线、路径线、图标只和某条射线相交一小段
+ *   4. 不透明白核（标点 / 四角星）连同膨胀出来的抗锯齿灰边整块剔除，
+ *      被遮住的格子算「看不见」而不是「没有」
+ *   5. 上升边（逆时针一侧更白）在中轴 −45°，下降边在 +45°。两条都在最好；
+ *      只剩一条（另一条被图标压住）也能定向，因为边的**极性**已经说明扇形在哪一侧
+ *
+ * 500 帧离线对照（scripts/vision-probe/cone-edge-regress.js）：新法输出的两条边
+ * 与肉眼可见的扇形边重合；圆心偏 8px、降到 1/5 分辨率时中轴漂移 p90 仍 < 4°。
  */
 
 function analyzeCone(img, size, step) {
   const d = img.data;
   const c0 = (size - 1) / 2;
-  const NB2 = 72; // 5° 一格
-  const SEGS = 6;
+  const NA = 120; // 3° 一格
+  const NR = 12;  // 径向 12 层
   const rIn = size * 0.16;
   /* 外径必须落在**窗口内**：窗口是 size×size、圆心在正中，能看到的半径上限就是
-   * 0.5*size。之前写成 0.92*size，等于要求扇形铺到画面外面去，径向 6 段里
-   * 永远只命中 3 段，「径向连续」这条判据必然判死 —— 整个通道等于空转。
-   * 取 0.48 留一点边，避开窗口四角抗锯齿导致的亮度衰减。 */
+   * 0.5*size。取 0.48 留一点边。内径 0.16 避开圆心的玩家箭头。 */
   const rOut = size * 0.48;
-  const invSpan = SEGS / (rOut - rIn);
+  const nx = Math.ceil(size / step);
+  const NC = NA * NR;
 
-  /* 不设任何颜色 / 白度 / 饱和度判据。
-   * 用户实拍证明：不同地图区域底色差异极大且无法预测，半透明白叠在深蓝水上
-   * 只是把 (48,104,202) 提亮成灰蓝 (100,130,160)，叠在雪地上几乎不着色，
-   * 叠在草地上又偏绿。任何「够亮 / 够白 / 低饱和」的绝对阈值都会整片失效。
-   * 唯一稳健的量是**局部相对亮度差**：这一角比它两侧亮多少。 */
-  const segTot = new Uint16Array(NB2 * SEGS);
-  const segLum = new Float32Array(NB2 * SEGS);
-  const layerLum = new Float32Array(SEGS);   // 各径向层的非纯白像素亮度和
-  const layerTot = new Uint32Array(SEGS);
-  const pureAt = [];                        // 纯白图标像素落在哪个格段
-  /* 小地图存在性门控信号：整窗的青色像素比例。
-   * 玩家箭头恒在圆心、且随小地图一起消失，与底色/视锥判据完全独立。
+  /* 每个采样点落在哪个极坐标格只和 (size, step) 有关，算一次存起来；
+   * 每帧省掉几万次 atan2 / sqrt。临时缓冲也一并复用，避免每帧分配。
+   * 按尺寸分别缓存：同一帧里多个识别区域（原生小地图 + 放大贴片）尺寸不同，
+   * 只留一份的话每次调用都要重建。 */
+  const cache = analyzeCone.cache || (analyzeCone.cache = new Map());
+  const cacheKey = size * 8 + step;
+  let sc = cache.get(cacheKey);
+  if (!sc) {
+    if (cache.size >= 6) cache.clear(); // 窗口尺寸一直在变（拖动框选时）也不至于越攒越多
+    const cell = new Int16Array(nx * nx).fill(-1);
+    const inv = NR / (rOut - rIn);
+    for (let gy = 0; gy < nx; gy += 1) {
+      const dy = c0 - gy * step; // 屏幕 y 向下，翻成数学坐标（y 向上）
+      for (let gx = 0; gx < nx; gx += 1) {
+        const dx = gx * step - c0;
+        const rho = Math.sqrt(dx * dx + dy * dy);
+        if (rho < rIn || rho >= rOut) continue;
+        let a = (Math.atan2(dy, dx) * 180) / Math.PI;
+        if (a < 0) a += 360;
+        const k = Math.min(NA - 1, (a * NA / 360) | 0);
+        const j = Math.min(NR - 1, ((rho - rIn) * inv) | 0);
+        cell[gy * nx + gx] = j * NA + k;
+      }
+    }
+    sc = {
+      cell,
+      mask: new Uint8Array(nx * nx),
+      tmp: new Uint8Array(nx * nx),
+      sR: new Float32Array(NC),
+      sG: new Float32Array(NC),
+      sB: new Float32Array(NC),
+      cnt: new Uint16Array(NC),
+      all: new Uint16Array(NC),
+      prof: new Float32Array(NA)
+    };
+    cache.set(cacheKey, sc);
+  }
+  const cellOf = sc.cell;
+  const mask = sc.mask;
+  const tmp = sc.tmp;
+  const { sR, sG, sB, cnt, all, prof } = sc;
+  mask.fill(0);
+  tmp.fill(0);
+  sR.fill(0);
+  sG.fill(0);
+  sB.fill(0);
+  cnt.fill(0);
+  all.fill(0);
+  prof.fill(0);
+
+  /* ---- 第一遍：小地图存在性信号 + 不透明白核 ----
+   *
+   * 青色占比：玩家箭头恒在圆心、且随小地图一起消失，与扇形判据完全独立。
    * 必须用固定阈值，不能用 analyze() 的 p99 自适应阈值（后者会把草地算成青色）。
-   * 真实视频 166 帧标定：有小地图 p05 ≈ 2.0% 采样点，无小地图 ≤ 0.11%，
-   * 相差约 18 倍；按采样点数归一化后可跨窗口尺寸使用。 */
+   * 真实视频 166 帧标定：有小地图 p05 ≈ 2.0% 采样点，无小地图 ≤ 0.11%。
+   *
+   * 白核：地图标点 / 四角星 / 图标的核心恒为 250+ 且三通道相等，与底色无关。
+   * 阈值取得很高（最暗通道 ≥ 236）：白膜叠在浅色地形上最多到 230 上下，
+   * 不能把扇形自己当图标剔掉；图标的灰边交给下面的膨胀。 */
   let cyanHits = 0;
-
-  for (let y = 0; y < size; y += step) {
-    const dy = c0 - y;
-    for (let x = 0; x < size; x += step) {
-      const i = (y * size + x) * 4;
+  for (let gy = 0; gy < nx; gy += 1) {
+    const row = gy * step * size;
+    const o = gy * nx;
+    for (let gx = 0; gx < nx; gx += 1) {
+      const i = (row + gx * step) * 4;
       const r = d[i];
       const g = d[i + 1];
-      const bl = d[i + 2];
-      if (Math.min(g, bl) - r >= 80) cyanHits += 1;
-      const dx = x - c0;
-      const rho = Math.sqrt(dx * dx + dy * dy);
-      if (rho < rIn || rho > rOut) continue;
-      let a = (Math.atan2(dy, dx) * 180) / Math.PI;
-      if (a < 0) a += 360;
-      const b = Math.min(NB2 - 1, (a * NB2 / 360) | 0);
-      const seg = Math.min(SEGS - 1, ((rho - rIn) * invSpan) | 0);
-      const k = b * SEGS + seg;
-      const mn = Math.min(r, g, bl);
-      const mx = Math.max(r, g, bl);
-      /* 唯一保留的颜色判据：不透明纯白 = 地图标点 / 四角星 / 玩家标记的**核心**。
-       * 它跟底色无关（图标永远 250+ 且三通道相等），但比半透明白膜亮得多，
-       * 若计入亮度剖面会形成尖锐假峰。这里先记下来，稍后用「同一径向层的
-       * 非纯白像素均值」替换 —— 等于把图标从画面里抹掉，
-       * 既不留下亮点，也不留下会让局部对比反向的暗洞。
-       * 抗锯齿灰边（200~235）仍会计入，但强度已经低一个量级。 */
-      if (mx >= 244 && mx - mn <= 8) {
-        pureAt.push(k);
-        continue;
-      }
-      const lum = (r + g + bl) / 3;
-      segTot[k] += 1;
-      segLum[k] += lum;
-      layerLum[seg] += lum;
-      layerTot[seg] += 1;
+      const b = d[i + 2];
+      if ((g < b ? g : b) - r >= 80) cyanHits += 1;
+      if (r >= 236 && g >= 236 && b >= 236 && (r >= 244 || g >= 244 || b >= 244)) tmp[o + gx] = 1;
     }
   }
-  for (const k of pureAt) {
-    const seg = k % SEGS;
-    const fill = layerTot[seg] ? layerLum[seg] / layerTot[seg] : 0;
-    segTot[k] += 1;
-    segLum[k] += fill;
-  }
-  const nx = Math.ceil(size / step);
   const cyanFrac = nx > 0 ? cyanHits / (nx * nx) : 0;
 
-  /* 每格每段：亮度减去「同层相邻角度带」的均值，得到与底色无关的局部抬升。
-   * 背景带取两侧各 5 格（±25°），跳过中间 90°，不会被扇形自己抬高。 */
-  const S = new Float32Array(NB2 * SEGS);
-  /* 原始亮度网格（纯白图标核心已被同层均值替换）。S 做过 ±9 格的局部归一化，
-   * 会把扇形两条半径边的阶跃压平；「边证据」必须用未经归一化的亮度。 */
-  const lumGrid = new Float32Array(NB2 * SEGS);
-  const LIFT_HALF = 9;
-  const LIFT_OUT = 5;
-  for (let s = 0; s < SEGS; s += 1) {
-    const lum = new Float32Array(NB2);
-    for (let b = 0; b < NB2; b += 1) {
-      const k = b * SEGS + s;
-      lum[b] = segTot[k] ? segLum[k] / segTot[k] : 0;
-      lumGrid[b * SEGS + s] = lum[b];
+  /* ---- 白核向外膨胀 size/90 像素（363px 窗口约 4px）----
+   * 图标边缘的抗锯齿 / 压缩晕边是「白 + 底色」的混合，恰好等价于一层 α 很大的白膜，
+   * 不剔掉就会在图标两侧各造出一对假边。先横向后纵向做方形膨胀，各两趟线扫。 */
+  const D = Math.max(1, Math.round(size / 90 / step));
+  for (let gy = 0; gy < nx; gy += 1) {
+    const o = gy * nx;
+    let last = -1e9;
+    for (let gx = 0; gx < nx; gx += 1) {
+      if (tmp[o + gx] === 1) last = gx;
+      if (gx - last <= D) mask[o + gx] = 1;
     }
-    for (let b = 0; b < NB2; b += 1) {
-      let bg = 0;
-      let n = 0;
-      for (let dd = -LIFT_HALF - LIFT_OUT; dd <= LIFT_HALF + LIFT_OUT; dd += 1) {
-        if (Math.abs(dd) <= LIFT_HALF) continue;
-        bg += lum[(b + dd + NB2) % NB2];
-        n += 1;
-      }
-      bg /= n || 1;
-      S[b * SEGS + s] = Math.max(0, Math.min(1, (lum[b] - bg) / 28));
+    last = 1e9;
+    for (let gx = nx - 1; gx >= 0; gx -= 1) {
+      if (tmp[o + gx] === 1) last = gx;
+      if (last - gx <= D) mask[o + gx] = 1;
+    }
+  }
+  // 纵向：mask（横向结果）→ tmp 记成 2，避免和白核的 1 混淆
+  for (let gx = 0; gx < nx; gx += 1) {
+    let last = -1e9;
+    for (let gy = 0; gy < nx; gy += 1) {
+      if (mask[gy * nx + gx] === 1) last = gy;
+      if (gy - last <= D) tmp[gy * nx + gx] = 2;
+    }
+    last = 1e9;
+    for (let gy = nx - 1; gy >= 0; gy -= 1) {
+      if (mask[gy * nx + gx] === 1) last = gy;
+      if (last - gy <= D) tmp[gy * nx + gx] = 2;
     }
   }
 
-  const HALF = 9; // ±9 格 = 90°，用户确认的恒定视野张角
-  const OUT = 5;  // 外侧再取 5 格做背景带
-  const sumBox = (c, s0, s1) => {
-    let sum = 0;
-    let n = 0;
-    for (let dd = -HALF; dd <= HALF; dd += 1) {
-      const b = (c + dd + NB2) % NB2;
-      for (let s = s0; s < s1; s += 1) {
-        sum += S[b * SEGS + s];
-        n += 1;
-      }
-    }
-    return n ? sum / n : 0;
-  };
-  const sumBand = (c, s0, s1) => {
-    let sum = 0;
-    let n = 0;
-    for (let dd = -HALF - OUT; dd <= HALF + OUT; dd += 1) {
-      if (Math.abs(dd) <= HALF) continue;
-      const b = (c + dd + NB2) % NB2;
-      for (let s = s0; s < s1; s += 1) {
-        sum += S[b * SEGS + s];
-        n += 1;
-      }
-    }
-    return n ? sum / n : 0;
-  };
-  // ② 边界锐度：模板两端内侧 2 格 vs 外侧 2 格的强度落差（只加分、不作硬门槛）
-  const edgeScore = (c) => {
-    let inner = 0;
-    let outer = 0;
-    for (const dd of [-HALF, -HALF + 1, HALF - 1, HALF]) {
-      const b = (c + dd + NB2) % NB2;
-      for (let s = 0; s < SEGS; s += 1) inner += S[b * SEGS + s];
-    }
-    for (const dd of [-HALF - 2, -HALF - 1, HALF + 1, HALF + 2]) {
-      const b = (c + dd + NB2) % NB2;
-      for (let s = 0; s < SEGS; s += 1) outer += S[b * SEGS + s];
-    }
-    return (inner - outer) / (4 * SEGS);
-  };
-
-  /* 逐径向层的 90° 局部对比。真实视锥是等角宽楔形、alpha 随半径衰减：
-   *   ① 两条半径边从圆心出发 → 每一层都是同一个方向比两侧亮（pos）
-   *   ② 内浓外淡            → 内两层响应 > 外两层（fade > 0）
-   * 这两条都是**结构**，不依赖任何底色或亮度幅度。
-   * 旧版用 contrast/edge/score 的绝对硬门槛（按合成帧标定），
-   * 在真实帧上扇形 contrast 只有 0.165 就被卡死 —— 改成相对决策。 */
-  const resp = new Float32Array(NB2 * SEGS);
-  for (let c = 0; c < NB2; c += 1) {
-    for (let s = 0; s < SEGS; s += 1) {
-      resp[c * SEGS + s] = sumBox(c, s, s + 1) - sumBand(c, s, s + 1);
+  /* ---- 第二遍：把没被图标盖住的像素按极坐标格累加 RGB ---- */
+  for (let gy = 0; gy < nx; gy += 1) {
+    const row = gy * step * size;
+    const o = gy * nx;
+    for (let gx = 0; gx < nx; gx += 1) {
+      const c = cellOf[o + gx];
+      if (c < 0) continue;
+      all[c] += 1;
+      if (tmp[o + gx] === 2) continue;
+      const i = (row + gx * step) * 4;
+      sR[c] += d[i];
+      sG[c] += d[i + 1];
+      sB[c] += d[i + 2];
+      cnt[c] += 1;
     }
   }
 
-  /* ---- 两条半径边证据 --------------------------------------------------
-   * 用户 2026-11-06 指出的物理先验：扇形两条半径边是从圆心出发的直线，
-   * 分界清晰、夹角恒 90°。旧判据只看「90° 窗口内比两侧亮」，一块亮地形
-   * 或一串白标就能顶出一个假峰；真扇形的**边**却很难被点状图标伪造。
+  /* ---- 逐角度的「半径边」剖面 ----
    *
-   * 对每个角度 a，取「右侧 10~30° 带」减「左侧 10~30° 带」的平均亮度，
-   * 沿 6 个径向层累加：贯穿全半径的直线在每层同号，白星标只点亮 1~2 格、
-   * 1~2 层，被宽角度带平均稀释。仍是同层相邻角度带的**相对差**，
-   * 不是绝对白度判据，与「底色不可预测」的约定不冲突。
-   */
-  const EV = new Float32Array(NB2);
-  for (let a = 0; a < NB2; a += 1) {
-    let sum = 0;
-    for (let s = 0; s < SEGS; s += 1) {
-      let rp = 0;
-      let lp = 0;
-      for (let d = 2; d <= 6; d += 1) {
-        rp += lumGrid[((a + d) % NB2) * SEGS + s];
-        lp += lumGrid[((a - d + NB2) % NB2) * SEGS + s];
+   * prof[k] > 0：角度 k 处是一条上升边（逆时针一侧盖着白膜），值 = 白膜 α；
+   * prof[k] < 0：下降边。绝大多数角度上它就是 0。
+   *
+   * 每层取 k 两侧各 SIDE 格（跳过 k 本身，躲开边上 1~2px 的过渡带），
+   * 设亮侧 = 暗侧 + α·(255 − 暗侧)，三通道联合最小二乘解 α，再逐通道验残差。 */
+  const SIDE = 2;
+  const A_MAX = 0.45; // 环带内白膜 α 实测 ≤ 0.36；更大的是图标残边或别的 UI，不算证据
+  const MIN_SUP = 5;  // 至少这么多径向层同号才认这是一条边
+  const vals = [];
+  for (let k = 0; k < NA; k += 1) {
+    vals.length = 0;
+    for (let j = 0; j < NR; j += 1) {
+      let lr = 0;
+      let lg = 0;
+      let lb = 0;
+      let ln = 0;
+      let la = 0;
+      let rr = 0;
+      let rg = 0;
+      let rb = 0;
+      let rn = 0;
+      let ra = 0;
+      for (let s = 1; s <= SIDE; s += 1) {
+        const cl = j * NA + ((k - s + NA) % NA);
+        const cr = j * NA + ((k + s) % NA);
+        lr += sR[cl];
+        lg += sG[cl];
+        lb += sB[cl];
+        ln += cnt[cl];
+        la += all[cl];
+        rr += sR[cr];
+        rg += sG[cr];
+        rb += sB[cr];
+        rn += cnt[cr];
+        ra += all[cr];
       }
-      sum += (rp - lp) / 5;
-    }
-    EV[a] = sum / SEGS;
-  }
-  // 90° 楔形的两条边落在 c±9 格；±1 格留量化余量。
-  // 进入边右亮左暗(EV>0)、离开边左亮右暗(EV<0)，必须同时成立。
-  const edgeBoost = (c) => {
-    let ein = -1e9;
-    let eout = -1e9;
-    for (const d of [-10, -9, -8]) ein = Math.max(ein, EV[(c + d + NB2) % NB2]);
-    for (const d of [8, 9, 10]) eout = Math.max(eout, -EV[(c + d + NB2) % NB2]);
-    return Math.sqrt(Math.max(0, ein) * Math.max(0, eout));
-  };
-
-  const cand = [];
-  for (let c = 0; c < NB2; c += 1) {
-    let all = 0;
-    let inner = 0;
-    let outer = 0;
-    let pos = 0;
-    for (let s = 0; s < SEGS; s += 1) {
-      const v = resp[c * SEGS + s];
-      all += v;
-      if (s < 2) inner += v;
-      if (s >= 4) outer += v;
-      if (v > 0.02) pos += 1;
-    }
-    all /= SEGS;
-    inner /= 2;
-    outer /= 2;
-    const fade = inner - outer;
-    /* 全为相对量的结构条件；不再有「必须比某个绝对亮度白」这类判据。
-     *
-     * 定向救援（2026-11-06 用户实拍标注帧）：地图标点（不透明白四角星 / 圆形
-     * 图标）常落在 90° 模板窗口**外侧的背景带**里，把背景抬得比扇形还亮，
-     * 于是外侧 3 层响应全变负 → all<=0 / pos<5，真峰被自己的结构条件误杀，
-     * 候选里只剩一个 U 形假峰（图标边缘），绿弧就指到扇形边界上去了。
-     * 实测该帧：真峰 score 0.675 / fade 1.02 / layers [0.11,0.58,0.32,
-     * -0.34,-0.62,-0.72]，假峰只有 0.430 / fade 0.08。
-     * 所以只对「内浓外淡极强 + 内侧三层连续为正」这一类开救援通道，
-     * 让它参与排序；普通的负响应假峰仍然被挡。 */
-    const blocked = (pos < 5 || fade <= 0.03 || all <= 0.02 || inner <= 0.03);
-    const rescueOK = fade >= 0.8 && inner >= 0.25 &&
-      resp[c * SEGS] > 0 && resp[c * SEGS + 1] > 0 && resp[c * SEGS + 2] > 0;
-    if (blocked && !rescueOK) continue;
-    const edge = edgeScore(c);
-    // 实心度：90° 窗口里 19 根角柱各自跨 6 层的强度，取 25% 分位。
-    // 这是纯空间结构 —— 视锥是连续面，每根柱都有值；地图标点只点亮少数柱。
-    // 不依赖颜色，白色四角星和灰白图标一视同仁。
-    const cols = [];
-    // 只看窗口中央 13 柱：视锥实际约 80~90°，90° 模板两端本就可能落在
-    // 扇形外（真实帧在深蓝水上就是这样），把边缘空柱算进来会冤枉真扇形。
-    for (let dd = -6; dd <= 6; dd += 1) {
-      const b = (c + dd + NB2) % NB2;
+      // 任一侧被图标盖掉一半以上 ⇒ 这一层在这个角度「看不见」，不参与表决
+      if (ln < 2 || rn < 2 || ln * 2 < la || rn * 2 < ra) continue;
+      lr /= ln;
+      lg /= ln;
+      lb /= ln;
+      rr /= rn;
+      rg /= rn;
+      rb /= rn;
+      const sign = rr + rg + rb >= lr + lg + lb ? 1 : -1;
+      // 暗侧 (o*) 与亮侧 (h*)
+      const or = sign > 0 ? lr : rr;
+      const og = sign > 0 ? lg : rg;
+      const ob = sign > 0 ? lb : rb;
+      const hr = sign > 0 ? rr : lr;
+      const hg = sign > 0 ? rg : lg;
+      const hb = sign > 0 ? rb : lb;
+      // 各通道到纯白的余量；底色已经接近纯白时没有信号可言
+      const Hr = 255 - or;
+      const Hg = 255 - og;
+      const Hb = 255 - ob;
+      const den = Hr * Hr + Hg * Hg + Hb * Hb;
+      if (den < 300) continue;
+      const a = ((hr - or) * Hr + (hg - og) * Hg + (hb - ob) * Hb) / den;
+      if (a > A_MAX) continue;
+      /* 三通道必须解出同一个 α：残差容限 = 4 级底噪 + 预期抬升的 30%。
+       * 水→陆（R +106、G +77、B +5）联合解出 α≈0.38，但 B 通道残差 52 ≫ 21，判 0；
+       * 判 0 的层照样参与表决，等于投了一张「这里不是白膜边」的反对票。 */
       let v = 0;
-      for (let s = 0; s < SEGS; s += 1) v += S[b * SEGS + s];
-      cols.push(v / SEGS);
+      if (
+        Math.abs(hr - or - a * Hr) <= 4 + 0.3 * a * Hr &&
+        Math.abs(hg - og - a * Hg) <= 4 + 0.3 * a * Hg &&
+        Math.abs(hb - ob - a * Hb) <= 4 + 0.3 * a * Hb
+      ) {
+        v = sign * a;
+      }
+      vals.push(v);
     }
-    cols.sort((x, y) => x - y);
-    const solid = cols[3];
-    const score = all + inner * 0.7 + fade * 0.5 + Math.max(0, edge) * 0.4;
-    const layers = [];
-    for (let s = 0; s < SEGS; s += 1) layers.push(resp[c * SEGS + s]);
-    let mono = 0;
-    for (let s = 0; s < SEGS - 1; s += 1) if (layers[s] - layers[s + 1] > -0.05) mono += 1;
-    /* 等角宽楔形：两条半径边从圆心出发，所以内侧 4 个径向层上视锥的
-     * 角宽不变，局部对比强度应当接近（真实帧 0.70~0.99）。
-     * 地形亮块只在某个半径出现，层间陡降（实测 0.08~0.51）。
-     * 这是纯几何量，不涉及任何底色或亮度绝对值。 */
-    const head = layers.slice(0, 4);
-    const hMin = Math.min(...head);
-    const hMax = Math.max(...head);
-    const flat = hMax > 0 ? hMin / hMax : 0;
-    /* flat / mono 只作诊断，不再一票否决（2026-11-06 真实视频 166 帧实测）。
-     * 漏检帧的 best 候选 score 0.99~1.37 / fade 0.39~0.72 / pos 5~6 都健康，
-     * 唯独真实地形的明暗起伏让「前 4 层 min/max」掉到 0.11~0.60。
-     * 合成帧地形均匀所以 flat 高 —— 这正是「合成回归全过、实测 43.8% 漏检」的根因。
-     * 保留计算并塞进 dbg，方便后续做软证据标定。 */
-    /* rank 只用于候选择优；score 原样保留给 0.16 下限、conf 和救援门限，
-     * 这样时序层（平滑系数 / 大跳门限）的行为完全不变，只改「选哪个峰」。
-     * W=0.6、/30 归一化按 166 帧真实视频标定：见 scripts/vision-probe/。 */
-    const rank = score + 0.6 * Math.min(1, edgeBoost(c) / 30);
-    cand.push({ c, score, rank, all, inner, outer, fade, pos, edge, solid, mono, flat, layers, rescued: blocked });
+    // 「可见层的严格多数」且不少于 MIN_SUP 层：取第 need 大 / 第 need 小的那个 α
+    const need = Math.max(MIN_SUP, (vals.length >> 1) + 1);
+    if (vals.length < need) continue;
+    vals.sort((x, y) => y - x);
+    const up = vals[need - 1];
+    const dn = vals[vals.length - need];
+    prof[k] = up > 0 ? up : dn < 0 ? dn : 0;
   }
-  if (!cand.length) return { valid: false, deg: 0, conf: 0, width: 90, cyanFrac };
 
-  // 按「结构分 + 两条半径边证据」择优，而不是纯结构分。
-  cand.sort((x, y) => y.rank - x.rank);
-  /* 救援候选必须「明显强于」正常候选才能上位。另一处高 fade 地形也可能满足
-   * 救援条件，若让它和正常峰自由比大小，会把原本连续的视角甩到反方向：
-   * 真实视频 t=108s 实测 49.9°(夹在 95°→30.7° 之间，正确) 被甩到 166.4°。
-   * 1.35 倍门限下该帧回退到正常峰；标注帧真峰 0.675 / 假峰 0.430 = 1.57 倍
-   * 仍能正常救援。 */
-  const normalBest = cand.find((t) => !t.rescued);
-  let best = cand[0];
-  if (best.rescued && normalBest && best.score < normalBest.score * 1.35) best = normalBest;
-  /* 相对优势也只留作诊断，不再一票否决。
-   * 真实帧里真扇形常与另一侧地形亮块并列，1.18 倍峰比额外砍掉 18/153 个真检出。
-   * 用高置信锚点检验过：放宽后新增的 57 帧检出里，能与前后锚点配对的 17 帧
-   * 有 13 帧（76.5%）落在锚点插值 ±25° 内，随机基线仅 11.8%。
-   * 保留 0.16 绝对下限，只挡「整帧没有任何成结构响应」的空画面。 */
-  const rival = cand.find((t) => Math.abs(angDiff(t.c * 5 + 2.5, best.c * 5 + 2.5)) > 30);
-  best.rivalScore = rival ? rival.score : 0;
-  if (best.score < 0.16) {
+  /* ---- 配对：上升边在中轴 −45°，下降边在 +45°（张角恒 90°）----
+   * 以半格（1.5°）为步长扫中轴；两条边都在时额外加分，但单边也允许胜出。 */
+  const HALF = 15; // 45° / 3°
+  const rise = (k) => {
+    const v = prof[((k % NA) + NA) % NA];
+    return v > 0 ? v : 0;
+  };
+  const fall = (k) => {
+    const v = prof[((k % NA) + NA) % NA];
+    return v < 0 ? -v : 0;
+  };
+  let best = null;
+  for (let c2 = 0; c2 < NA * 2; c2 += 1) {
+    const c = c2 / 2;
+    let r1;
+    let f1;
+    if (c2 % 2 === 0) {
+      r1 = rise(c - HALF);
+      f1 = fall(c + HALF);
+    } else {
+      r1 = Math.max(rise(c - 0.5 - HALF), rise(c + 0.5 - HALF));
+      f1 = Math.max(fall(c - 0.5 + HALF), fall(c + 0.5 + HALF));
+    }
+    const score = r1 + f1 + 0.5 * Math.min(r1, f1);
+    if (!best || score > best.score) best = { c, score, rise: r1, fall: f1 };
+  }
+  /* 真扇形单条边的 α 约 0.15~0.25（两条 ⇒ score 0.4~0.6）。
+   * 0.11 以下只可能是图标 / 地形凑出来的零星残边，宁可交给时序层保持。 */
+  if (!best || best.score < 0.11) {
     return { valid: false, deg: 0, conf: 0, width: 90, cyanFrac, dbg: best };
   }
 
-  // 90° 窗口内按各层响应之和求加权质心，微调中轴
-  let sx = 0;
-  let sy = 0;
-  let wsum = 0;
-  for (let dd = -HALF; dd <= HALF; dd += 1) {
-    const b = (best.c + dd + NB2) % NB2;
+  // 亚格细化：每条边在 ±2 格内按强度求质心（边恰好落在两格之间时两格都有响应）
+  const refine = (center, fn) => {
+    const k0 = Math.round(center);
     let w = 0;
-    for (let s = 0; s < SEGS; s += 1) w += Math.max(0, resp[b * SEGS + s]);
-    if (w <= 0) continue;
-    const rad = (((b + 0.5) * 360) / NB2) * Math.PI / 180;
-    sx += Math.cos(rad) * w;
-    sy += Math.sin(rad) * w;
-    wsum += w;
+    let s = 0;
+    for (let dd = -2; dd <= 2; dd += 1) {
+      const v = fn(k0 + dd);
+      w += v;
+      s += v * (k0 + dd);
+    }
+    return w > 1e-6 ? s / w : null;
+  };
+  const eR = best.rise > 0.02 ? refine(best.c - HALF, rise) : null;
+  const eF = best.fall > 0.02 ? refine(best.c + HALF, fall) : null;
+  let axis = best.c;
+  if (eR !== null && eF !== null) {
+    axis = ((eR + HALF) * best.rise + (eF - HALF) * best.fall) / (best.rise + best.fall);
+  } else if (eR !== null) {
+    axis = eR + HALF;
+  } else if (eF !== null) {
+    axis = eF - HALF;
   }
-  const deg = wsum > 1e-6 ? degOf(sx, sy) : best.c * 5 + 2.5;
-  const conf = Math.max(0, Math.min(1, (best.score - 0.15) / 0.8));
-  return { valid: conf > 0.12, deg, conf, width: 90, peakCov: wsum, cyanFrac, dbg: best };
+  const toDeg = (bin) => ((((bin + 0.5) * 360) / NA) % 360 + 360) % 360;
+  const deg = toDeg(axis);
+  best.riseDeg = eR === null ? -1 : toDeg(eR);
+  best.fallDeg = eF === null ? -1 : toDeg(eF);
+  // 双边清晰 ⇒ 1；只剩一条边 ⇒ 0.3~0.5，时序层会相应放慢跟随
+  const conf = Math.max(0, Math.min(1, (best.score - 0.06) / 0.34));
+  return { valid: conf > 0.12, deg, conf, width: 90, cyanFrac, dbg: best };
 }
 
 /**
@@ -1241,28 +1304,73 @@ function tickBearing() {
   let cone = null;
   let mapCyan = 0;   // 所有 ROI 里最高的青色比例（布局切换时别取错区域）
 
-  for (const roi of BEARING.rois) {
-    const g = grabCenter(roi);
-    if (!g) continue;
-    const r = analyze(g.img, g.size, g.step);
-    if (!seen || r.conf > seen.conf) seen = r;
+  // 自动定心：当前生效的圆心修正。为 0 时下面走和旧实现完全一样的路径。
+  const A = BEARING.auto;
+  const tx = A ? A.trim.x : 0;
+  const ty = A ? A.trim.y : 0;
+  // 定心要复用「本帧已经抓好的大窗」，顺手记下哪个 ROI 出了最佳箭头 / 青色最多
+  let bestGrab = null;
+  let bestRoi = null;
+  let bestIdx = -1;
+  let cyanGrab = null;
+  let cyanRoi = null;
+  let cyanIdx = -1;
+  let cyanBest = -1;
+
+  for (let i = 0; i < BEARING.rois.length; i += 1) {
+    const roi = BEARING.rois[i];
+    // 一帧只读一次视频画面：先抓扇形大窗，箭头小窗从里面裁。
+    // 原来两个通道各抓一次、每次约 10ms（与窗口大小无关），30fps 下白占半帧预算。
+    let gc = grabCenter(roi, 1.5, 512, tx, ty);
+    let g = gc ? cropCenterWindow(gc, roi, 0.62, 320, tx, ty) : null;
+    if (!g) {
+      // 修正后窗口贴到画面外（或大窗抓不到）：退回用户圆心，别把两路一起丢掉
+      gc = grabCenter(roi, 1.5, 512);
+      g = (gc && cropCenterWindow(gc, roi)) || grabCenter(roi);
+    }
+    if (!gc && !g) continue;
+
+    if (g) {
+      const r = analyze(g.img, g.size, g.step);
+      if (!seen || r.conf > seen.conf) seen = r;
+      if (r.valid && (!best || r.conf > best.conf)) {
+        best = { ...r, size: g.size };
+        bestGrab = gc;
+        bestRoi = roi;
+        bestIdx = i;
+      }
+    }
 
     // 扇形每帧都要算，且必须换**大窗口**：几何通道的 0.62R 中心小窗
     // 看不到径向衰减，等于把「内浓外淡」这个关键证据直接丢掉。
     // 大窗口按 step=2 跳采，扫描像素数与几何通道同量级。
-    const gc = grabCenter(roi, 1.5, 512);
     if (gc) {
       const cn = analyzeCone(gc.img, gc.size, gc.step);
       mapCyan = Math.max(mapCyan, cn.cyanFrac || 0);
       // 扇形恒在：连 invalid 的结果也交给 updateView 走宽限，别在采集层就丢掉
       if (!cone || cn.conf > cone.conf) cone = { ...cn, size: gc.size };
+      if ((cn.cyanFrac || 0) > cyanBest) {
+        cyanBest = cn.cyanFrac || 0;
+        cyanGrab = gc;
+        cyanRoi = roi;
+        cyanIdx = i;
+      }
     }
-
-    if (!r.valid) continue;
-    if (!best || r.conf > best.conf) best = { ...r, size: g.size };
   }
 
   const now = Date.now();
+
+  /* 手动自动定心：只有用户点了「③ 自动定心」才跑；算准一次就停，不会自己重来。
+   * 用本帧已经抓好、尚未被其他逻辑改写的大窗做尝试，不额外读视频。 */
+  if (A && A.active) {
+    const target = bestGrab
+      ? { roi: bestRoi, gc: bestGrab, idx: bestIdx }
+      : { roi: cyanRoi, gc: cyanGrab, idx: cyanIdx };
+    if (target && target.roi) {
+      autoCenterStep(target.roi, target.idx, target.gc, !!best || cyanBest >= MAP_CYAN_FRAC_MIN, now);
+    }
+  }
+
   // 视角通道独立于行进通道，先把它算出来。几何彻底失效时它可能还有值。
   // 门控只管「小地图在不在」，不管「这一帧有没有认出扇形」—— 后者由宽限兜。
   const view = updateView(cone, now, mapCyan >= MAP_CYAN_FRAC_MIN);
@@ -1372,6 +1480,268 @@ function tickBearing() {
   });
 }
 
+/* ------------------------------------------------------- 自动定心（2026-11-12） */
+
+/* 质心落后支点的距离 / √连通块面积。452 帧实测均值 0.1394、标准差 0.0112，取 0.139；
+ * 用面积开方归一，换分辨率也成立（4K 下箭头面积约为 1080P 的 4 倍，k 也就翻倍）。 */
+const AC_KAPPA = 0.139;
+/* 一圈候选支点：15° 一个。真解与两个「把尾巴当鼻尖」的假解相隔约 120°，15° 足以覆盖。 */
+const AC_RING = 24;
+/* 候选方向的「自洽」容差：analyze 返回的朝向必须落在这个方向 ±20° 内。 */
+const AC_TOL = 20;
+/* 连通块最小面积（像素）。低于它多半是噪声或图标碎片，不参与定心。 */
+const AC_MIN_BLOB = 40;
+/* 手动模式下每 120ms 尝试一次（用户主动在等，尽量快；一次尝试约 12ms 计算）。 */
+const AC_ATTEMPT_MS = 120;
+/* 投票保鲜期：真支点每帧都在同一处，假支点随朝向移动；窗口里角色转过向，票数自然拉开。 */
+const AC_VOTE_TTL_MS = 15000;
+/* 锁定门槛：至少 6 票，且至少是次优簇的 2 倍。 */
+const AC_LOCK_VOTES = 6;
+const AC_LOCK_RATIO = 2;
+/* 距最优簇超过这个像素数才算「另一个簇」。 */
+const AC_FAR_PX = 4;
+/* 学到的支点与当前圆心差在这个范围内 ⇒ 圆心本来就对，不动它。 */
+const AC_SNAP_PX = 2;
+/* 一次手动定心最多跑多久。角色一直不转向时真假支点分不开，到点就报失败。 */
+const AC_SESSION_MS = 20000;
+
+function resetAutoCenter(reason) {
+  const A = BEARING.auto;
+  if (!A) return;
+  const active = A.active || A.trim.x !== 0 || A.trim.y !== 0;
+  if (A.active) finishAutoCenter({ ok: false, reason: 'reset' });
+  A.active = false;
+  A.trim.x = 0;
+  A.trim.y = 0;
+  A.votes.length = 0;
+  A.attempts = 0;
+  A.lastAttemptAt = 0;
+  A.deadline = 0;
+  if (reason && active) console.log(`[跟跑助手] 自动定心已取消（${reason}）`);
+}
+
+/**
+ * 数出当前帧 mask 里最大连通块的质心（靠 analyze 留在 BEARING.lbl 里的标号）。
+ * analyze 在青色像素不足 12 个时会提前返回、lbl 还是上一帧的，调用方必须先确认 cyans ≥ 12。
+ */
+function largestBlobCenter(size) {
+  const lbl = BEARING.lbl;
+  if (!lbl || lbl.length !== size * size) return null;
+  const acc = new Map();
+  for (let i = 0; i < lbl.length; i += 1) {
+    const id = lbl[i];
+    if (!id) continue;
+    let a = acc.get(id);
+    if (!a) acc.set(id, (a = { n: 0, sx: 0, sy: 0 }));
+    a.n += 1;
+    a.sx += i % size;
+    a.sy += (i / size) | 0;
+  }
+  let best = null;
+  for (const a of acc.values()) if (!best || a.n > best.n) best = a;
+  return best ? { x: best.sx / best.n, y: best.sy / best.n, area: best.n } : null;
+}
+
+/**
+ * 一次定心尝试：以当前连通块质心为起点，按 k 画一圈候选支点，
+ * 每个候选都从**本帧已抓好的大窗**里裁小窗重跑 analyze，只留下
+ * 「返回朝向与候选方向相差 ≤20°」的自洽位置，各投一票（同一位置去重）。
+ *
+ * 单帧里真支点和两个假支点都会自洽——分开它们靠的是多帧投票，见 decideAutoCenter。
+ */
+function autoCenterAttempt(roi, big, now) {
+  const A = BEARING.auto;
+  const g = cropCenterWindow(big, roi, 0.62, 320, A.trim.x, A.trim.y);
+  if (!g) return;
+  const r0 = analyze(g.img, g.size, g.step);
+  if (!r0 || !(r0.cyans >= 12)) return;
+  const blob = largestBlobCenter(g.size);
+  if (!blob || blob.area < AC_MIN_BLOB) return;
+
+  const c0 = (g.size - 1) / 2;
+  // 质心换算成「相对用户圆心的视频像素偏移」
+  const mx = A.trim.x + (blob.x - c0);
+  const my = A.trim.y + (blob.y - c0);
+  const k = AC_KAPPA * Math.sqrt(blob.area);
+  if (!(k > 0.5)) return;
+
+  const seen = new Set();
+  for (let j = 0; j < AC_RING; j += 1) {
+    const th = (j * 360) / AC_RING;
+    const rad = (th * Math.PI) / 180;
+    const px = Math.round(mx + k * Math.cos(rad));
+    const py = Math.round(my - k * Math.sin(rad));
+    const cg = cropCenterWindow(big, roi, 0.62, 320, px, py);
+    if (!cg) continue;
+    const r = analyze(cg.img, cg.size, cg.step);
+    if (!r.valid || Math.abs(angDiff(r.angle, th)) > AC_TOL) continue;
+    // 用返回的精确朝向再定一次位置，消掉 15° 步长的量化
+    const rad2 = (r.angle * Math.PI) / 180;
+    const qx = Math.round(mx + k * Math.cos(rad2));
+    const qy = Math.round(my - k * Math.sin(rad2));
+    const key = qx + ',' + qy;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    A.votes.push({ x: qx, y: qy, at: now });
+  }
+}
+
+/**
+ * 从投票里挑支点：按 3×3 邻域聚票，取最高；先按保鲜期丢掉过期票。
+ * 要求 ≥6 票且 ≥2 倍于次优簇。
+ *
+ * 一直直线跑的时候真支点和假支点票数相当，比例到不了 2，不会锁定；
+ * 角色一转，假支点随朝向散开、真支点留在原处，比例自然拉开。
+ */
+function decideAutoCenter(votes, now) {
+  const cutoff = now - AC_VOTE_TTL_MS;
+  let kept = 0;
+  for (let i = 0; i < votes.length; i += 1) {
+    const v = votes[i];
+    if (v.at >= cutoff) votes[kept++] = v;
+  }
+  votes.length = kept;
+  if (!votes.length) return null;
+
+  const counts = new Map();
+  for (const v of votes) {
+    const key = v.x + ',' + v.y;
+    counts.set(key, (counts.get(key) || 0) + 1);
+  }
+  const around = (x, y) => {
+    let n = 0;
+    let sx = 0;
+    let sy = 0;
+    for (let dy = -1; dy <= 1; dy += 1) {
+      for (let dx = -1; dx <= 1; dx += 1) {
+        const m = counts.get((x + dx) + ',' + (y + dy));
+        if (!m) continue;
+        n += m;
+        sx += (x + dx) * m;
+        sy += (y + dy) * m;
+      }
+    }
+    return { n, x: sx / n, y: sy / n };
+  };
+
+  let top = null;
+  for (const key of counts.keys()) {
+    const [x, y] = key.split(',').map(Number);
+    const c = around(x, y);
+    if (!top || c.n > top.n) top = c;
+  }
+  if (!top) return null;
+
+  let rival = 0;
+  for (const key of counts.keys()) {
+    const [x, y] = key.split(',').map(Number);
+    if (Math.max(Math.abs(x - top.x), Math.abs(y - top.y)) <= AC_FAR_PX) continue;
+    const c = around(x, y);
+    if (c.n > rival) rival = c.n;
+  }
+
+  if (top.n < AC_LOCK_VOTES || top.n < AC_LOCK_RATIO * rival) return null;
+  return { x: Math.round(top.x), y: Math.round(top.y), n: top.n, rival };
+}
+
+/**
+ * 开始一次手动定心（由「③ 自动定心」按钮触发）。
+ * 只置状态，真正的尝试在 tickBearing 每帧调用 autoCenterStep 时做。
+ */
+function beginAutoCenter(now = Date.now()) {
+  const A = BEARING.auto;
+  A.active = true;
+  A.trim.x = 0;
+  A.trim.y = 0;
+  A.votes.length = 0;
+  A.attempts = 0;
+  A.lastAttemptAt = 0;
+  A.deadline = now + AC_SESSION_MS;
+  console.log('[跟跑助手] 手动自动定心开始');
+}
+
+/** 结束本次定心并把结果回报给渲染进程（渲染进程再让主进程把修正写进标定）。 */
+function finishAutoCenter(result) {
+  const A = BEARING.auto;
+  const wasActive = A.active;
+  A.active = false;
+  // 失败 / 取消：撤掉临时修正；成功则保留，直到主进程回传修正后的标定
+  if (!(result && result.ok && result.applied)) {
+    A.trim.x = 0;
+    A.trim.y = 0;
+  }
+  const payload = { phase: 'done', ...result, attempts: A.attempts };
+  try {
+    ipcRenderer.sendToHost('bearing-autocenter', payload);
+  } catch {
+    /* 页面正在卸载 */
+  }
+  if (!wasActive) return;
+  if (payload.ok) {
+    console.log(
+      payload.applied
+        ? `[跟跑助手] 自动定心完成：圆心修正 (${payload.dx}, ${payload.dy})px，得票 ${payload.votes}（次优 ${payload.rival}）`
+        : '[跟跑助手] 自动定心：学到的支点与当前圆心一致，保持不动'
+    );
+  } else {
+    console.log(`[跟跑助手] 自动定心结束：${payload.reason || '失败'}`);
+  }
+}
+
+/**
+ * 手动定心的一帧：按时间节流做尝试、投票，锁定后把修正交给 finishAutoCenter。
+ * 学到的支点和当前圆心差 ≤2px 时视为「圆心本来就准」，不动它。
+ */
+function autoCenterStep(roi, roiIndex, big, mapPresent, now) {
+  const A = BEARING.auto;
+  if (!A.active) return;
+  if (now >= A.deadline) {
+    finishAutoCenter({ ok: false, reason: 'timeout' });
+    return;
+  }
+  // 这一帧没有小地图：不投票，等下一帧（deadline 照样在走）
+  if (!big || !mapPresent) return;
+  if (now - A.lastAttemptAt < AC_ATTEMPT_MS) return;
+  A.lastAttemptAt = now;
+  A.attempts += 1;
+
+  autoCenterAttempt(roi, big, now);
+  const lock = decideAutoCenter(A.votes, now);
+  if (!lock) {
+    if (A.attempts % 10 === 0) {
+      try {
+        ipcRenderer.sendToHost('bearing-autocenter', { phase: 'progress', attempts: A.attempts });
+      } catch {
+        /* 页面正在卸载 */
+      }
+    }
+    return;
+  }
+
+  const dx = lock.x - A.trim.x;
+  const dy = lock.y - A.trim.y;
+  if (Math.abs(dx) <= AC_SNAP_PX && Math.abs(dy) <= AC_SNAP_PX) {
+    finishAutoCenter({ ok: true, applied: false, dx, dy, votes: lock.n, rival: lock.rival });
+    return;
+  }
+
+  const vw = video ? video.videoWidth : 0;
+  const vh = video ? video.videoHeight : 0;
+  A.trim.x = lock.x;
+  A.trim.y = lock.y;
+  finishAutoCenter({
+    ok: true,
+    applied: true,
+    dx: lock.x,
+    dy: lock.y,
+    dcx: vw ? lock.x / vw : 0,
+    dcy: vh ? lock.y / vh : 0,
+    roiIndex,
+    votes: lock.n,
+    rival: lock.rival
+  });
+}
+
 /**
  * 启动识别循环。
  *
@@ -1397,6 +1767,8 @@ function startBearingLoop() {
   BEARING.view.sent = -1;
   BEARING.view.conf = 0;
   BEARING.view.src = '';
+  // 识别循环从头开始：定心结果不再可靠，重新学
+  resetAutoCenter('识别循环重新开始');
 
   const v = video;
   if (!v) return;
@@ -1463,7 +1835,14 @@ try {
       lastAngle: BEARING.lastAngle,
       ticks: BEARING.ticks || 0,
       reportedValid: BEARING.reportedValid,
-      ab: { ...BEARING.ab }
+      ab: { ...BEARING.ab },
+      // 自动定心状态：排查「圆心学歪了没有」时看这里
+      auto: {
+        active: BEARING.auto.active,
+        trim: { ...BEARING.auto.trim },
+        attempts: BEARING.auto.attempts,
+        votes: BEARING.auto.votes.length
+      }
     }),
     frame: () => grabFrameWithRoi(),
     window: () => (BEARING.canvas ? BEARING.canvas.toDataURL('image/png') : ''),
@@ -1863,11 +2242,16 @@ function videoRectInfo() {
 function setBearing(cfg = {}) {
   // 区域列表是主入口；旧的单区域参数保留兼容
   if (Array.isArray(cfg.rois)) {
-    BEARING.rois = cfg.rois
+    const next = cfg.rois
       .filter((r) => r && Number.isFinite(r.cx) && Number.isFinite(r.cy) && Number.isFinite(r.r))
       .slice(0, 4);
+    // 同一份配置会被反复下发，区域真变了才清掉自动定心的学习结果
+    if (JSON.stringify(next) !== JSON.stringify(BEARING.rois)) resetAutoCenter('识别区域变化');
+    BEARING.rois = next;
   } else if (Number.isFinite(cfg.mapCx)) {
-    BEARING.rois = [{ cx: cfg.mapCx, cy: cfg.mapCy, r: cfg.mapR }];
+    const next = [{ cx: cfg.mapCx, cy: cfg.mapCy, r: cfg.mapR }];
+    if (JSON.stringify(next) !== JSON.stringify(BEARING.rois)) resetAutoCenter('识别区域变化');
+    BEARING.rois = next;
   }
 
   if (cfg.dump) {
@@ -1943,6 +2327,34 @@ function safePlay() {
 
 function apply(msg) {
   if (!msg || typeof msg !== 'object') return;
+
+  // 手动自动定心：用户点了「③ 自动定心」才进来。前置条件不满足就立刻回报原因。
+  if (msg.cmd === 'autocenter') {
+    if (!video) bind(pickVideo());
+    if (!video) {
+      finishAutoCenter({ ok: false, reason: 'no-video' });
+      return;
+    }
+    if (video.paused || video.ended) {
+      finishAutoCenter({ ok: false, reason: 'paused' });
+      return;
+    }
+    if (!BEARING.enabled) {
+      finishAutoCenter({ ok: false, reason: 'disabled' });
+      return;
+    }
+    if (!BEARING.rois.length) {
+      finishAutoCenter({ ok: false, reason: 'no-roi' });
+      return;
+    }
+    beginAutoCenter();
+    try {
+      ipcRenderer.sendToHost('bearing-autocenter', { phase: 'start' });
+    } catch {
+      /* 页面正在卸载 */
+    }
+    return;
+  }
 
   if (msg.cmd === 'clean') {
     setClean(!!msg.on);

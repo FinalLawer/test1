@@ -20,6 +20,9 @@ contextBridge.exposeInMainWorld('api', {
   overlayPlace: (on) => ipcRenderer.invoke('overlay:place', on),
   overlayPlaceState: () => ipcRenderer.invoke('overlay:place-state'),
   overlayRadius: (r) => ipcRenderer.invoke('overlay:radius', r),
+  // 手动自动定心的结果：由浮窗转交主进程，把修正写进该视频的标定
+  autoCenterResult: (r) => ipcRenderer.invoke('bearing:auto-center-result', r),
+  onAutoCenterResult: (cb) => ipcRenderer.on('auto-center-result', (_e, r) => cb(r)),
   saveDump: (p) => ipcRenderer.invoke('overlay:dump-save', p),
   revealDump: () => ipcRenderer.invoke('overlay:reveal-dump'),
   onBearingState: (cb) => ipcRenderer.on('bearing:state', (_e, s) => cb(s)),

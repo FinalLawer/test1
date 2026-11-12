@@ -15,6 +15,17 @@ const state = {
   toastTimer: null
 };
 
+/** 自动定心失败的原因 → 给用户看的话 */
+const AUTO_CENTER_FAIL = {
+  paused: '视频没在播放，先播放再点自动定心',
+  timeout: '没学会圆心：画面里可能没有小地图，或角色一直没转向，再点一次并让角色转个身',
+  disabled: '先打开「显示方位箭头」',
+  'no-roi': '还没框选视频里的小地图',
+  'no-video': '浮窗里还没载入视频，先启动跟跑',
+  reset: '已取消',
+  'save-failed': '已对准，但写入标定失败'
+};
+
 /* ------------------------------------------------------------------ 启动 */
 
 document.addEventListener('DOMContentLoaded', init);
@@ -29,10 +40,22 @@ async function init() {
   $('dataDir').textContent = state.boot.dataDir || '—';
   // 路径长了会被省略号截断，挂个 title 让鼠标悬停能看到完整路径
   $('dataDir').title = state.boot.dataDir || '';
-  $('dataTip').textContent = state.boot.portable
-    ? '便携版：设置和标定都在 data\\ 里；发给别人时只发 exe，别带上 data\\（里面有你的登录态）'
-    : '当前为开发模式，用的是系统 %APPDATA% 目录；打包后会跟着 exe 走';
+  // 四种形态各说各的。以前只分「便携 / 其它」，安装版也会显示「当前为开发模式」。
+  const mode = state.boot.installMode || (state.boot.portable ? 'portable' : 'dev');
+  const dataTips = {
+    portable: '绿色版：设置、标定和登录态都在 data\\ 里，整个文件夹拷走即可迁移；别把它发给别人',
+    installed: '安装版：设置、标定和登录态都在这里，卸载不会删除，重装可以接着用',
+    fallback: '程序目录不可写，已改存到系统 %APPDATA% 目录',
+    dev: '开发模式：用的是系统 %APPDATA% 目录'
+  };
+  $('dataTip').textContent = dataTips[mode] || dataTips.dev;
+  $('dataTip').title = $('dataTip').textContent;
   $('btnOpenData').addEventListener('click', () => window.api.action('open-data'));
+
+  // 滑块拖动时同步左侧的填充；程序改值（fillSettings）那条路在 fillSettings 里单独调
+  document.addEventListener('input', (e) => {
+    if (e.target && e.target.type === 'range') paintRange(e.target);
+  });
 
   fillSettings(s);
   renderHotkeys();
@@ -64,6 +87,13 @@ async function init() {
 
   window.api.onFloatState((st) => setFloatState(!!(st && st.running)));
   window.api.onLogin((nav) => applyNav(nav));
+  // 「③ 自动定心」的结果：主进程写标定成功后还会广播 settings，这里只负责告诉用户
+  window.api.onAutoCenterResult((r) => {
+    if (!r) return;
+    if (r.ok && r.applied) toast(`自动定心完成：圆心已修正 (${r.dx}, ${r.dy})px，已记住`);
+    else if (r.ok) toast('圆心本来就对准了，不用调整');
+    else toast(AUTO_CENTER_FAIL[r.reason] || '自动定心没成功，再试一次', true);
+  });
   // 浮窗改了设置（比如按热键切了穿透）就同步回界面
   window.api.onSettingsChanged((next) => {
     state.boot.settings = next;
@@ -316,6 +346,17 @@ function effectiveRois(b, videoId) {
   return Array.isArray(b.rois) ? b.rois : [];
 }
 
+/**
+ * 滑块左侧「已走过」的部分要填强调色，但 Chromium 的 range 没有对应的伪元素，
+ * 只能把当前百分比写进 CSS 变量，由 console.css 里的渐变背景去画。
+ */
+function paintRange(el) {
+  const min = Number(el.min) || 0;
+  const max = Number(el.max) || 100;
+  const pct = max > min ? ((Number(el.value) - min) / (max - min)) * 100 : 0;
+  el.style.setProperty('--fill', `${Math.min(100, Math.max(0, pct))}%`);
+}
+
 function fillSettings(s) {
   $('setPin').checked = !!s.pinned;
   $('setPass').checked = !!s.clickThrough;
@@ -337,10 +378,14 @@ function fillSettings(s) {
 
   // 数量要按「这个视频实际会用到的」算，直接用全局 rois 会和浮窗对不上
   const n = effectiveRois(b, state.video && state.video.id).length;
-  $('btnPickRoi').textContent =
-    b.calibrated && n
-      ? `① 框选小地图（已标定 ${n} 处）`
-      : '① 框选视频里的小地图（未标定）';
+  const done = !!(b.calibrated && n);
+  $('btnPickRoi').textContent = done
+    ? `① 框选小地图（已标定 ${n} 处）`
+    : '① 框选视频里的小地图（未标定）';
+  // 标定过的那一步打个绿勾，一眼能看出两步走到哪了
+  $('btnPickRoi').classList.toggle('done', done);
+
+  for (const id of ['setOpacity', 'setVolume', 'setBearingSize']) paintRange($(id));
 }
 
 function wireSettings() {
@@ -380,6 +425,8 @@ function wireSettings() {
 function renderPlaceButton(placing) {
   state.placing = !!placing;
   $('btnPlace').textContent = placing ? '锁定位置' : '② 拖到我的游戏小地图上';
+  // 摆放中整颗按钮高亮，提醒「再点一次才算锁定」
+  $('btnPlace').classList.toggle('active', !!placing);
 }
 
 async function syncPlaceButton() {
@@ -419,6 +466,16 @@ function wireBearing() {
   $('btnPickRoi').addEventListener('click', () => {
     window.api.action('calib');
     toast('在浮窗里拖金色圆环套住小地图，滚轮调大小');
+  });
+
+  // ③ 自动定心：用户主动点，跑一次、算准就停；结果由主进程写进这个视频的标定
+  $('btnAutoCenter').addEventListener('click', () => {
+    if (!state.boot.settings.bearing.enabled) {
+      toast('先打开「显示方位箭头」', true);
+      return;
+    }
+    window.api.action('autocenter');
+    toast('开始自动定心：保持视频播放，角色走动 / 转身更容易成功（5~20 秒）', 6000);
   });
 
   $('btnPlace').addEventListener('click', async () => {
@@ -489,7 +546,7 @@ function renderHotkeys() {
 
     const kbd = document.createElement('button');
     kbd.className = 'kbd';
-    kbd.textContent = prettify(hotkeys[meta.key] || '未设置');
+    paintKeys(kbd, hotkeys[meta.key]);
     kbd.addEventListener('click', () => captureHotkey(kbd, meta.key));
 
     row.append(label, kbd);
@@ -497,6 +554,33 @@ function renderHotkeys() {
   }
 
   renderHookState();
+}
+
+/**
+ * 把加速器画成一组键帽：Alt+Space → [Alt] + [空格]。
+ * 一整串「Alt+空格」塞在一个按钮里，扫一眼分不清是几个键；拆开后和键盘上的样子对得上。
+ * 鼠标侧键是一个整体，不按 + 拆。
+ */
+function paintKeys(kbd, acc) {
+  kbd.textContent = '';
+  kbd.title = '点击后按下新的键位';
+  if (!acc) {
+    kbd.textContent = '未设置';
+    return;
+  }
+  const parts = /^Mouse[45]$/i.test(acc) ? [acc] : String(acc).split('+');
+  parts.forEach((part, i) => {
+    if (i) {
+      const plus = document.createElement('span');
+      plus.className = 'plus';
+      plus.textContent = '+';
+      kbd.appendChild(plus);
+    }
+    const key = document.createElement('span');
+    key.className = 'key';
+    key.textContent = prettify(part);
+    kbd.appendChild(key);
+  });
 }
 
 /**
@@ -711,6 +795,8 @@ function prettify(acc) {
 
 function applyNav(nav) {
   const el = $('accountLine');
+  // 前面的小圆点：登录后变绿（样式在 console.css 的 .account.on）
+  el.classList.toggle('on', !!(nav && nav.loggedIn));
   if (!nav) {
     el.textContent = '登录状态未知';
     return;

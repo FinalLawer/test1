@@ -124,6 +124,7 @@ check('portable 壳提权', build.portable.requestExecutionLevel, 'admin');
 check('nsis 一键安装关闭', build.nsis.oneClick, false);
 check('nsis 可改安装目录', build.nsis.allowToChangeInstallationDirectory, true);
 check('nsis 卸载保留数据', build.nsis.deleteAppDataOnUninstall, false);
+check('nsis 只出简体中文界面', build.nsis.installerLanguages, ['zh_CN']);
 check('nsis 自定义脚本', build.nsis.include, 'build/installer.nsh');
 check('nsis 许可页', build.nsis.license, 'build/LICENSE.txt');
 check('nsis 侧栏位图', build.nsis.installerSidebar, 'build/installerSidebar.bmp');
@@ -139,7 +140,7 @@ if (has(nshPath)) {
   const raw = read(nshPath);
   const nsh = raw.toString('utf8');
   check('installer.nsh 是 UTF-8 BOM', raw.subarray(0, 3).toString('hex'), 'efbbbf');
-  for (const macro of ['customWelcomePage', 'customInit', 'customPageAfterChangeDir', 'customInstall', 'customUnInstall', 'customFinishPage']) {
+  for (const macro of ['customWelcomePage', 'customInit', 'customPageAfterChangeDir', 'customInstall', 'customUnInstall', 'customFinishPage', 'customUnInit', 'customUnWelcomePage', 'customUninstallPage']) {
     check(`定义了 !macro ${macro}`, nsh.includes(`!macro ${macro}`), true);
   }
   // 只匹配真正以 !undef 开头的指令行，注释里提到这个词不算
@@ -149,10 +150,14 @@ if (has(nshPath)) {
   check('写了 migrate-from.txt', nsh.includes('migrate-from.txt'), true);
   check('写了 includeLogin=1', nsh.includes('includeLogin=1'), true);
   check('卸载清理标记', nsh.includes('Delete "$INSTDIR\\installed.flag"'), true);
+  // 卸载默认必须保留用户数据：只有选项页明确勾选后才允许删 %APPDATA%
+  check('卸载默认不删用户数据', /!macro customUnInit[\s\S]*?StrCpy \$grbUnDeleteData "0"/.test(nsh), true);
+  check('删数据前有勾选判断', /\$\{If\} \$grbUnDeleteData == "1"[\s\S]*?RMDir \/r "\$grbUnDataDir"/.test(nsh), true);
+  check('卸载页函数只在宏体里（un. 前缀）', /!macro customUnWelcomePage[\s\S]*?Function un\.grbUnOptionsCreate/.test(nsh), true);
 
   const tpl = read(path.join(ROOT, 'node_modules/app-builder-lib/templates/nsis/assistedInstaller.nsh')).toString('utf8');
   const hooks = [...tpl.matchAll(/!ifmacrodef (\w+)/g)].map((m) => m[1]);
-  for (const h of ['customWelcomePage', 'licensePage', 'customPageAfterChangeDir', 'customFinishPage']) {
+  for (const h of ['customWelcomePage', 'licensePage', 'customPageAfterChangeDir', 'customFinishPage', 'customUnWelcomePage', 'customUninstallPage']) {
     check(`模板有钩子 ${h}`, hooks.includes(h), true);
   }
   check('licensePage 交给 electron-builder 生成', nsh.includes('!macro licensePage'), false);

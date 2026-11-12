@@ -1236,6 +1236,48 @@ function registerIpc() {
   });
 
   ipcMain.handle('overlay:enable', (_e, on) => setBearingEnabled(on));
+
+  /**
+   * 手动自动定心的结果。访客算出的 dx/dy 是「视频像素」，这里换算成归一化偏移，
+   * 直接写进该视频的标定（roiBy[id] 优先，否则全局 rois）——这就是「固定住」：
+   * 下次打开还是对准的，浮窗里的临时修正也会随新标定归零。
+   *
+   * 只接受 ok && applied 的结果；失败 / 取消不改任何标定。
+   */
+  ipcMain.handle('bearing:auto-center-result', (_e, res) => {
+    const p = res && typeof res === 'object' ? res : {};
+    let out = { ok: !!p.ok, applied: !!p.applied, reason: p.reason || '' };
+
+    if (p.ok && p.applied) {
+      const b = settings.bearing || (settings.bearing = {});
+      const rawId = String(p.videoId || settings.lastVideoId || '');
+      const keys = Object.keys(b.roiBy || {});
+      const key = rawId && b.roiBy && b.roiBy[rawId] ? rawId : keys.find((k) => k.toLowerCase() === rawId.toLowerCase());
+      const own = key && Array.isArray(b.roiBy[key]) && b.roiBy[key].length ? b.roiBy[key] : null;
+      const list = own || (Array.isArray(b.rois) ? b.rois : null);
+      const idx = Math.max(0, Math.min(Number(p.roiIndex) || 0, (list ? list.length : 0) - 1));
+      const roi = list && list[idx];
+
+      if (roi && Number.isFinite(p.dcx) && Number.isFinite(p.dcy)) {
+        roi.cx = Math.min(0.999, Math.max(0.001, roi.cx + p.dcx));
+        roi.cy = Math.min(0.999, Math.max(0.001, roi.cy + p.dcy));
+        if (own) b.roiBy[key] = list;
+        else b.rois = list;
+        // 自动定心成功本身就说明这块区域已经对准，别再提示「还没标定」
+        b.calibrated = true;
+        persist();
+        // 两边都通知：浮窗会拿新标定重挂识别，启动器刷新文案
+        broadcast('settings:changed', settings);
+        out = { ok: true, applied: true, dx: p.dx, dy: p.dy, roi };
+      } else {
+        out = { ok: false, applied: false, reason: 'save-failed' };
+      }
+    }
+
+    // 启动器也要看到结果（浮窗这时可能被游戏压住，用户看不到它的 toast）
+    sendTo(consoleWin, 'auto-center-result', out);
+    return out;
+  });
   ipcMain.handle('overlay:place', (_e, on) => setOverlayPlacing(on));
   // 启动器重建 / 箭头开关切换后，用它把按钮文案对齐到主进程的真实状态
   ipcMain.handle('overlay:place-state', () => overlayPlacing);
@@ -1396,6 +1438,15 @@ function registerIpc() {
         if (!win || win.isDestroyed()) createWindow();
         sendTo(win, 'float:cmd', { cmd: 'calib' });
         return true;
+      case 'autocenter': {
+        // 自动定心也只在浮窗里做：浮窗没起就先起，等它加载完再把命令递过去
+        const fresh = !win || win.isDestroyed();
+        if (fresh) createWindow();
+        const send = () => sendTo(win, 'float:cmd', { cmd: 'autocenter' });
+        if (fresh) setTimeout(send, 1500);
+        else send();
+        return true;
+      }
       case 'dump':
         if (win && !win.isDestroyed()) sendTo(win, 'float:cmd', { cmd: 'dump' });
         return true;

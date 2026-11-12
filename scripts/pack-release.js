@@ -146,6 +146,15 @@ async function writeSums() {
 }
 
 async function main() {
+  // 安装脚本丢了 BOM 时 makensis 不会报错，只会把中文按系统代码页读成乱码打进安装器，
+  // 等装到一半才发现就晚了，所以打包前先拦下
+  if (!ZIP_ONLY && !SUMS_ONLY) {
+    const nsh = fs.readFileSync(path.join(ROOT, 'build', 'installer.nsh'));
+    if (nsh.subarray(0, 3).toString('hex') !== 'efbbbf') {
+      throw new Error('build/installer.nsh 缺少 UTF-8 BOM，安装页中文会乱码；请补上前三字节 EF BB BF 再打包');
+    }
+  }
+
   fs.mkdirSync(OUT, { recursive: true });
   console.log(`输出目录：${OUT}`);
 

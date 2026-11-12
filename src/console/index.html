@@ -11,7 +11,7 @@
   </head>
   <body>
     <!-- 纯 CSS 分页：radio 必须是 #shell 的前置兄弟，导航 label 通过 for 切换。
-         这样不用往 console.js 里加任何 UI 代码，回归脚本的行为完全不变。 -->
+         这样不用往 console.js 里加任何分页代码，回归脚本的行为完全不变。 -->
     <input class="nav-radio" type="radio" name="nav" id="tab-home" checked />
     <input class="nav-radio" type="radio" name="nav" id="tab-bearing" />
     <input class="nav-radio" type="radio" name="nav" id="tab-window" />
@@ -19,7 +19,6 @@
 
     <!-- 线性图标：内联 SVG symbol，不依赖字体或外部资源（CSP 只允许 self） -->
     <svg class="icon-defs" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-      <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16" /></symbol>
       <symbol id="i-compass" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" /><path d="M15.6 8.4l-2.1 5.1-5.1 2.1 2.1-5.1z" /></symbol>
       <symbol id="i-play" viewBox="0 0 24 24"><path d="M8 5.5v13l10.5-6.5z" /></symbol>
       <symbol id="i-window" viewBox="0 0 24 24"><rect x="3" y="4.5" width="18" height="15" rx="2" /><path d="M3 9.5h18M7 7h.01M9.5 7h.01" /></symbol>
@@ -35,17 +34,18 @@
       <symbol id="i-cursor" viewBox="0 0 24 24"><path d="M5 3l14 8-6.5 1.5L9.5 19z" /></symbol>
       <symbol id="i-volume" viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9z" /><path d="M17 9a4 4 0 010 6M19.5 6.5a7.5 7.5 0 010 11" /></symbol>
       <symbol id="i-resume" viewBox="0 0 24 24"><path d="M4 5v14l10-7zM17 5v14" /></symbol>
+      <symbol id="i-target" viewBox="0 0 24 24"><circle cx="12" cy="12" r="7.5" /><path d="M12 2.5v4M12 17.5v4M2.5 12h4M17.5 12h4" /></symbol>
     </svg>
 
     <div id="shell">
-      <!-- ============================================ 左侧导航（NavigationView） -->
+      <!-- ============================================================ 左侧导航 -->
       <aside class="navpane">
-        <!-- NavigationView 的 PaneToggle：汉堡按钮，纯装饰 -->
+        <!-- 与右侧 .topbar 同一条 40px 标题栏带：放真正的品牌，而不是点了没反应的装饰按钮 -->
         <div class="nav-brand">
-          <span class="brand-mark"><svg class="ico"><use href="#i-menu"></use></svg></span>
+          <span class="brand-mark"><svg class="ico"><use href="#i-compass"></use></svg></span>
+          <strong class="brand-text">原神跟跑助手</strong>
         </div>
 
-        <div class="nav-caption">工作台</div>
         <nav class="nav-list">
           <label class="nav-item" for="tab-home" title="启动">
             <svg class="ico"><use href="#i-play"></use></svg><span>启动</span>
@@ -61,27 +61,16 @@
           </label>
         </nav>
 
+        <div class="nav-foot"><span class="ver" id="ver"></span></div>
       </aside>
 
       <!-- ======================================================= 内容工作区 -->
       <section class="workspace">
-        <!-- ui:TitleBar：Icon + Header + TrailingContent -->
+        <!-- 自绘标题栏：整条可拖动，右侧是账号；系统的最小化 / 最大化 / 关闭浮在最右 -->
         <header class="topbar">
-          <div class="title-brand">
-            <span class="title-mark"><svg class="ico"><use href="#i-compass"></use></svg></span>
-            <strong>原神跟跑助手</strong>
-            <span class="ver" id="ver"></span>
-          </div>
-          <div class="crumb">
-            <span class="sep">·</span>
-            <span class="crumb-cur" data-for="home">启动</span>
-            <span class="crumb-cur" data-for="bearing">方位标定</span>
-            <span class="crumb-cur" data-for="window">浮窗</span>
-            <span class="crumb-cur" data-for="hotkeys">快捷键</span>
-          </div>
           <div class="topbar-right">
             <span id="accountLine" class="account">未登录 · 只能看预览和标清</span>
-            <button id="btnLogin" class="ghost tiny">登录 / 切换账号</button>
+            <button id="btnLogin" class="tiny">登录 / 切换账号</button>
           </div>
         </header>
 
@@ -90,27 +79,70 @@
           <div id="elevBanner" class="elev-banner" hidden>
             <svg class="ico"><use href="#i-warn"></use></svg>
             <span id="elevBannerText"></span>
-            <button id="btnElevate" class="ghost tiny">以管理员身份重启</button>
+            <button id="btnElevate" class="tiny">以管理员身份重启</button>
           </div>
         </div>
 
         <div class="content">
           <!-- ---------------------------------------------------------- 启动 -->
           <div class="pane pane-home">
-            <!-- HomePage.xaml: Height=200 / CornerRadius=8 / OpacityMask 左下渐隐 / 文字 Margin=52,0,0,26 -->
-            <div class="banner">
-              <div class="banner-art"></div>
-              <div class="banner-shade"></div>
-              <div class="banner-text">
-                <h2>原神跟跑助手</h2>
-                <p>边跑图，边看攻略</p>
-                <span class="banner-link">视频里的小地图方位与视角方向，实时叠在你的游戏画面上</span>
+            <!-- 主视觉：直接画出产品在做的事（视频小地图 → 你的小地图上的红箭头 / 绿弧）。
+                 全部是内联矢量，没有引入任何外部图片素材。 -->
+            <div class="hero">
+              <div class="hero-text">
+                <h2>边跑图，边看攻略</h2>
+                <p>读出攻略视频里小地图的行进方向与镜头朝向，实时标在你自己的游戏画面上。</p>
+                <div class="hero-legend">
+                  <span><i class="lg lg-red"></i>红箭头 · 行进方向</span>
+                  <span><i class="lg lg-green"></i>绿弧 · 镜头朝向</span>
+                </div>
               </div>
-            </div>
+              <svg class="hero-art" viewBox="0 0 330 150" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                <defs>
+                  <radialGradient id="heroCone" cx="0" cy="0" r="42" gradientUnits="userSpaceOnUse">
+                    <stop offset="0" stop-color="#fff" stop-opacity="0.42" />
+                    <stop offset="1" stop-color="#fff" stop-opacity="0.1" />
+                  </radialGradient>
+                  <!-- 下面两个渐变与 overlay.js 的取色一致：箭头尾深尖亮，绿弧内缘亮外缘深 -->
+                  <linearGradient id="heroArrow" x1="0" y1="-17" x2="0" y2="-41.5" gradientUnits="userSpaceOnUse">
+                    <stop offset="0" stop-color="#c4121d" />
+                    <stop offset="0.55" stop-color="#ff2f2f" />
+                    <stop offset="1" stop-color="#ff5a48" />
+                  </linearGradient>
+                  <radialGradient id="heroArc" cx="0" cy="0" r="51.9" gradientUnits="userSpaceOnUse">
+                    <stop offset="0.838" stop-color="#93f7b4" />
+                    <stop offset="0.911" stop-color="#35d96b" />
+                    <stop offset="1" stop-color="#1fae52" />
+                  </radialGradient>
+                </defs>
+                <!-- 视频里的小地图：白色视野扇形 + 青色玩家箭头 -->
+                <g transform="translate(78 66)">
+                  <circle class="ha-disc" r="42" />
+                  <path fill="url(#heroCone)" transform="rotate(-40)" d="M0 0L-29.7-29.7A42 42 0 0 1 29.7-29.7Z" />
+                  <path class="ha-player" transform="rotate(35)" d="M0-12L7.5 8 0 3.5-7.5 8Z" />
+                </g>
+                <text class="ha-label" x="78" y="136">视频里的小地图</text>
 
-            <div class="pane-head">
-              <h1>启动</h1>
-              <p>选好视频、对准小地图，然后回到游戏里用快捷键控制播放。</p>
+                <!-- 识别 → 叠加 -->
+                <path class="ha-link" d="M136 66H184" />
+                <path class="ha-link-head" d="M181 60.5l6.5 5.5-6.5 5.5" />
+
+                <!-- 你的小地图：外圈是叠加层画的红箭头和绿弧 -->
+                <g transform="translate(252 66)">
+                  <circle class="ha-ring" r="46" />
+                  <circle class="ha-disc" r="33" />
+                  <path class="ha-player" transform="rotate(-105) scale(0.82)" d="M0-12L7.5 8 0 3.5-7.5 8Z" />
+                  <!-- 造型照着 overlay.js 画：绿弧是两端收细、正中带小尖的月牙，
+                       红箭头是细尾 + 后掠箭头的一整块轮廓。渐变用 fill 属性引用，
+                       不放进 console.css —— 外链样式表里的 url(#id) 解析基准不可靠 -->
+                  <path class="ha-arc" fill="url(#heroArc)" transform="rotate(-40)" d="M-23.6-40.8A42 42 0 0 1-7.9-47.9Q-3-48.6 0-51.9Q3-48.6 7.9-47.9A42 42 0 0 1 23.6-40.8A1.1 1.1 0 0 1 22.4-38.9A56.8 56.8 0 0 0-22.4-38.9A1.1 1.1 0 0 1-23.6-40.8Z" />
+                  <g class="ha-arrow" transform="rotate(35)">
+                    <path class="ha-arrow-body" fill="url(#heroArrow)" d="M-1.2-17L-2.6-32.5L-6.7-29.4L0-41.5L6.7-29.4L2.6-32.5L1.2-17Z" />
+                    <path class="ha-arrow-shine" d="M0-41.5L-6.7-29.4L-2.6-32.5L-1.2-17H0Z" />
+                  </g>
+                </g>
+                <text class="ha-label" x="252" y="136">你的小地图</text>
+              </svg>
             </div>
 
             <section class="card">
@@ -128,16 +160,17 @@
                 </div>
                 <div class="meta"><span id="videoMeta">还没载入视频</span></div>
                 <div class="resume" id="resumeBar" hidden>
+                  <svg class="ico"><use href="#i-clock"></use></svg>
                   <span class="resume-tag">上次看到</span>
                   <span class="resume-info" id="resumeInfo">—</span>
-                  <button id="btnResume" class="ghost tiny">继续观看</button>
+                  <button id="btnResume" class="tiny">继续观看</button>
                 </div>
                 <div class="row">
-                  <label class="lbl">分 P</label>
+                  <label class="lbl" for="part">分 P</label>
                   <select id="part" class="sel"></select>
                   <span class="grow"></span>
                   <span id="floatState" class="badge off">浮窗未启动</span>
-                  <button id="btnStop" class="ghost" disabled>关闭浮窗</button>
+                  <button id="btnStop" class="small" disabled>关闭浮窗</button>
                 </div>
               </div>
             </section>
@@ -150,7 +183,7 @@
                   <p>按这三步走，基本不会踩坑</p>
                 </div>
               </div>
-              <div class="card-body note-steps">
+              <div class="card-body note-steps note-cols">
                 <div class="note-step"><b>1</b><span>游戏内「图像 → 显示模式」改成 <b>窗口化</b> 或 <b>无边框</b>；独占全屏下系统不允许任何浮窗盖上去。</span></div>
                 <div class="note-step"><b>2</b><span>在「方位标定」里框选视频小地图，再把红圈拖到你自己的小地图上。</span></div>
                 <div class="note-step"><b>3</b><span>回到游戏，用快捷键暂停 / 快进。默认 <b>Alt+空格</b> 暂停播放。</span></div>
@@ -187,15 +220,28 @@
                     <span class="val" id="sizeVal">110</span>
                   </span>
                 </div>
-                <div class="btn-grid">
-                  <button id="btnPickRoi" class="ghost">① 框选视频里的小地图</button>
-                  <button id="btnPlace" class="ghost">② 拖到我的游戏小地图上</button>
-                  <button id="btnDumpRoi" class="ghost">抓一帧核对</button>
-                  <button id="btnOpenDump" class="ghost">打开导出位置</button>
-                  <button id="btnClearRoi" class="ghost span-all">清除本视频标定</button>
+
+                <!-- 主流程只有两步，单独做成大按钮；排查工具降一级放在下面 -->
+                <div class="setting setting-stack">
+                  <span class="setting-ico"><svg class="ico"><use href="#i-target"></use></svg></span>
+                  <span class="setting-text"><strong>标定三步</strong><small>先框住视频里的小地图，再把标记摆到你自己的小地图上；圆心不用手动对到像素级，交给「③ 自动定心」</small></span>
+                  <div class="steps">
+                    <button id="btnPickRoi" class="step-btn">① 框选视频里的小地图</button>
+                    <button id="btnPlace" class="step-btn">② 拖到我的游戏小地图上</button>
+                    <button id="btnAutoCenter" class="step-btn span2">③ 自动定心（点一下，程序自己对准圆心并记住）</button>
+                  </div>
+                </div>
+
+                <div class="tool-row">
+                  <span class="tool-label">排查</span>
+                  <button id="btnDumpRoi" class="small">抓一帧核对</button>
+                  <button id="btnOpenDump" class="small">打开导出位置</button>
+                  <span class="grow"></span>
+                  <button id="btnClearRoi" class="ghost small danger">清除本视频标定</button>
                 </div>
                 <p class="tip">
                   框选要在浮窗里做：点了会把浮窗叫起来，拖金色圆环套住视频里的小地图，滚轮调大小。<br />
+                  圆心大致对准就行：点「③ 自动定心」后程序会自己找箭头支点，算准一次就写进这个视频的标定并固定住。<br />
                   转场 / 特写 / 对话时画面里没有小地图，箭头会自动收起，不是故障。
                 </p>
               </div>
@@ -210,8 +256,8 @@
                 </div>
               </div>
               <div class="card-body note-steps">
-                <div class="note-step"><b>红</b><span>青色玩家三角指向的方向 = 角色正在往哪走，来自小地图中央的箭头。</span></div>
-                <div class="note-step"><b>绿</b><span>半透明白色扇形（恒定 90° 张角）的中轴 = 镜头看过去的方向，来自视野指示扇形。</span></div>
+                <div class="note-step"><b class="tag-red">红</b><span>青色玩家三角指向的方向 = 角色正在往哪走，来自小地图中央的箭头。</span></div>
+                <div class="note-step"><b class="tag-green">绿</b><span>半透明白色扇形（恒定 90° 张角）的中轴 = 镜头看过去的方向，来自视野指示扇形。</span></div>
               </div>
             </section>
           </div>
@@ -298,10 +344,10 @@
                   <h2>键位 <span class="hint">游戏全屏时同样生效</span></h2>
                   <p>带 Alt / Ctrl 的组合是独占的，单键走被动监听</p>
                 </div>
+                <button id="btnResetHk" class="small head-action">恢复默认</button>
               </div>
               <div class="card-body">
                 <div id="hkList" class="hk-list"></div>
-                <button id="btnResetHk" class="ghost block">恢复默认快捷键</button>
                 <p class="tip">
                   单键（如 <b>F9</b>、<b>J</b>）走系统钩子被动监听：不占用、不拦截按键，但因此游戏里同一个键也会照常生效，建议挑不常用的键。
                   带 <b>Alt / Ctrl</b> 的组合则是独占的，按下去别的程序收不到。

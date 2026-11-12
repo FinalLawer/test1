@@ -152,6 +152,10 @@ function createWebview() {
       onGuestBearing(e.args && e.args[0]);
       return;
     }
+    if (e.channel === 'bearing-autocenter') {
+      onGuestAutoCenter(e.args && e.args[0]);
+      return;
+    }
     if (e.channel === 'bearing-dump') {
       onGuestDump(e.args && e.args[0]);
       return;
@@ -287,6 +291,51 @@ function onGuestBearing(p) {
 
 let autoDumped = false;
 
+/**
+ * 手动「自动定心」的结果。访客只负责算，修正值交给主进程写进该视频的标定，
+ * 这样下次打开还是对准的（浮窗自己不留状态）。
+ */
+const AUTO_CENTER_FAIL = {
+  paused: '视频没在播放，先播放再点自动定心',
+  timeout: '没学会圆心：画面里可能没有小地图，或角色一直没转向，再点一次并让角色转个身',
+  disabled: '先打开「显示方位箭头」',
+  'no-roi': '还没框选视频里的小地图',
+  'no-video': '还没找到视频',
+  reset: '自动定心已取消',
+  'save-failed': '已对准，但写入标定失败；本次会话内仍然有效'
+};
+
+function onGuestAutoCenter(p) {
+  if (!p) return;
+  if (p.phase === 'start') {
+    toast('自动定心中：保持视频播放，角色走动 / 转身更容易成功（5~20 秒）', 6000);
+    return;
+  }
+  if (p.phase === 'progress') return;
+  if (p.phase !== 'done') return;
+
+  if (!p.ok) {
+    toast(AUTO_CENTER_FAIL[p.reason] || '自动定心没成功，再试一次', 6000);
+    return;
+  }
+  if (!p.applied) {
+    toast('圆心本来就对准了（偏差 ≤2 像素），不用调整', 5000);
+    return;
+  }
+  toast(`圆心已自动对准：修正 (${p.dx}, ${p.dy})px`, 5000);
+  // 交给主进程持久化：成功后浮窗会收到修正过的标定，临时修正随之归零
+  try {
+    const r = window.api.autoCenterResult({ ...p, videoId: state.id });
+    if (r && typeof r.then === 'function') {
+      r.then((out) => {
+        if (!out || !out.ok) toast('已对准，但写入标定失败；本次会话内仍然有效', 6000);
+      }).catch(() => {});
+    }
+  } catch {
+    /* 主进程不在或通道关闭都不影响本次会话内的修正 */
+  }
+}
+
 /** 未标定时自动导出一张识别区域图，方便排查；标定过就不打扰 */
 function maybeAutoDump() {
   const b = state.boot.settings.bearing;
@@ -419,7 +468,7 @@ async function openCalib() {
 
   calib.open = true;
   $('calib').classList.remove('hidden');
-  $('calibHint').textContent = '拖动对准小地图圆心 · 滚轮缩放，让圆环刚好包住小地图圆盘';
+  $('calibHint').textContent = '拖动对准小地图圆心（大致即可，偏了可回启动器点「③ 自动定心」）· 滚轮缩放，让圆环刚好包住小地图圆盘';
   paintCalib();
 }
 
@@ -616,8 +665,9 @@ function applyState(v) {
 
   if (v.found) hidePlaceholderIfVideo();
 
-  $('btnPlay').textContent = v.playing ? '⏸' : '▶';
-  $('btnMute').textContent = v.muted || v.volume === 0 ? '🔇' : '🔊';
+  // 图标是内联 SVG，这里只切状态 class，显示哪一枚由 style.css 决定
+  $('btnPlay').classList.toggle('playing', !!v.playing);
+  $('btnMute').classList.toggle('muted', !!(v.muted || v.volume === 0));
   $('btnSpeed').textContent = `${(v.rate || 1).toFixed(2).replace(/0$/, '')}×`;
 
   if (!state.seeking) paintProgress(v.current, v.duration);
@@ -690,6 +740,7 @@ function wireUi() {
   window.api.onFloatCmd((c) => {
     if (!c) return;
     if (c.cmd === 'calib') openCalib();
+    else if (c.cmd === 'autocenter') sendPlayer({ cmd: 'autocenter' });
     else if (c.cmd === 'dump') sendPlayer({ cmd: 'bearing', dump: true });
     else if (c.cmd === 'load' && c.text) loadVideo(c.text, Number(c.p) || 1, true);
   });

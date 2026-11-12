@@ -10,16 +10,31 @@
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
+    <!-- 图标全部是内联 SVG：emoji 在不同系统字体下大小、颜色、基线都不一样，
+         而且浮窗缩到很小时会糊成一团。app.js 只切 class，不再往按钮里写字符。 -->
+    <svg class="icon-defs" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <symbol id="f-link" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" /><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" /></symbol>
+      <symbol id="f-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" /></symbol>
+      <symbol id="f-min" viewBox="0 0 24 24"><path d="M6 12.5h12" /></symbol>
+      <symbol id="f-close" viewBox="0 0 24 24"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11" /></symbol>
+      <symbol id="f-play" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></symbol>
+      <symbol id="f-pause" viewBox="0 0 24 24"><path d="M8.5 5.5v13M15.5 5.5v13" /></symbol>
+      <symbol id="f-volume" viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9z" /><path d="M17 9a4 4 0 010 6M19.5 6.5a7.5 7.5 0 010 11" /></symbol>
+      <symbol id="f-mute" viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9z" /><path d="M17 9.5l4.5 5M21.5 9.5l-4.5 5" /></symbol>
+      <symbol id="f-video" viewBox="0 0 24 24"><rect x="3" y="5" width="13" height="14" rx="2" /><path d="M16 10l5-3v10l-5-3z" /></symbol>
+    </svg>
+
     <div id="app">
       <header id="titlebar">
         <div class="brand"><span class="dot"></span><span class="name">跟跑助手</span></div>
         <div class="vtitle" id="videoTitle"></div>
         <div class="tools">
-          <select id="partSelect" class="sel" title="分 P"></select>
-          <button id="btnLink" class="ico" title="地址栏">🔗</button>
-          <button id="btnSettings" class="ico" title="打开启动器">⚙</button>
-          <button id="btnMin" class="ico" title="最小化">—</button>
-          <button id="btnClose" class="ico danger" title="关闭">✕</button>
+          <select id="partSelect" class="sel hidden" title="分 P"></select>
+          <button id="btnLink" class="tb" title="换视频（粘贴链接）"><svg class="ico"><use href="#f-link"></use></svg></button>
+          <button id="btnSettings" class="tb" title="打开启动器（全部设置）"><svg class="ico"><use href="#f-gear"></use></svg></button>
+          <span class="tb-sep"></span>
+          <button id="btnMin" class="tb" title="最小化"><svg class="ico"><use href="#f-min"></use></svg></button>
+          <button id="btnClose" class="tb danger" title="关闭浮窗"><svg class="ico"><use href="#f-close"></use></svg></button>
         </div>
       </header>
 
@@ -30,7 +45,7 @@
 
       <main id="stage">
         <div id="placeholder">
-          <div class="ph-icon">⛰</div>
+          <div class="ph-icon"><svg class="ico"><use href="#f-video"></use></svg></div>
           <p>粘贴一个 B 站攻略视频链接</p>
           <span>支持 BV 号、av 号、b23.tv 短链、带分 P 的链接</span>
         </div>
@@ -40,7 +55,7 @@
             <span class="calib-tag">小地图圆心</span>
           </div>
           <div class="calib-bar">
-            <span id="calibHint">滚轮缩放圆环，直到它刚好包住小地图圆盘</span>
+            <span id="calibHint">拖动对准小地图圆心（大致即可，偏了可回启动器点「③ 自动定心」）</span>
             <span id="calibSize">—</span>
             <button id="calibCancel" class="ghost">取消</button>
             <button id="calibOk" class="primary">完成</button>
@@ -49,11 +64,17 @@
       </main>
 
       <footer id="controls">
-        <button id="btnPlay" class="play" title="播放 / 暂停">▶</button>
+        <button id="btnPlay" class="play" title="播放 / 暂停">
+          <svg class="ico i-play"><use href="#f-play"></use></svg>
+          <svg class="ico i-pause"><use href="#f-pause"></use></svg>
+        </button>
         <span id="timeText" class="time">00:00 / 00:00</span>
         <div id="progress" class="progress"><div id="bar" class="bar"></div><div id="knob" class="knob"></div></div>
         <button id="btnSpeed" class="mini" title="倍速">1.0×</button>
-        <button id="btnMute" class="mini" title="静音">🔊</button>
+        <button id="btnMute" class="mini" title="静音">
+          <svg class="ico i-volume"><use href="#f-volume"></use></svg>
+          <svg class="ico i-mute"><use href="#f-mute"></use></svg>
+        </button>
       </footer>
 
       <div id="grip" title="拖动调整大小"></div>

@@ -1,11 +1,12 @@
 {
   "name": "genshin-route-buddy",
   "productName": "原神跟跑助手",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "description": "B站攻略视频悬浮窗：置顶于原神之上，自动读取视频里的角色朝向并在自己的小地图上标出",
   "main": "src/main.js",
   "author": "FinalLawer",
   "license": "MIT",
+  "homepage": "https://github.com/FinalLawer/GIFA",
   "scripts": {
     "start": "node scripts/launch.js",
     "dist": "electron-builder --win",
@@ -14,7 +15,10 @@
     "pack:setup": "node scripts/pack-release.js --setup-only",
     "pack:release": "node scripts/pack-release.js",
     "verify:artifacts": "node scripts/verify-artifacts.js",
-    "test:data-dir": "node scripts/data-dir-test.js"
+    "assets": "python scripts/make-assets.py",
+    "test:data-dir": "node scripts/data-dir-test.js",
+    "test:autocenter": "node scripts/vision-probe/autocenter-500.js",
+    "test:cone": "node scripts/vision-probe/cone-edge-regress.js"
   },
   "devDependencies": {
     "electron": "^45.0.0",
@@ -62,6 +66,7 @@
       "createStartMenuShortcut": true,
       "shortcutName": "原神跟跑助手",
       "deleteAppDataOnUninstall": false,
+      "installerLanguages": ["zh_CN"],
       "include": "build/installer.nsh",
       "license": "build/LICENSE.txt",
       "installerSidebar": "build/installerSidebar.bmp",

@@ -25,3 +25,7 @@ scripts/vision-probe/video-conf.json
 Thumbs.db
 .idea/
 .vscode/
+
+# Python 字节码缓存（scripts/make-assets.py）
+__pycache__/
+*.pyc
