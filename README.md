@@ -4,12 +4,16 @@
 
 ## 下载与安装
 
+**最新版下载：** https://github.com/FinalLawer/test1/releases/latest
+
 发布包有两种，功能完全一样，按习惯选一个：
 
-| 版本 | 适合 | 设置保存在 |
-| --- | --- | --- |
-| **zip 绿色版** `GenshinRouteBuddy-0.2.4-win-x64.zip` | 解压到任意文件夹双击即用，不写注册表，整个文件夹可以拷走 / 放 U 盘 | 程序目录里的 `data\` |
-| **安装版** `GenshinRouteBuddy-0.2.4-Setup.exe` | 想要开始菜单 / 桌面快捷方式、卸载器、开机自启 | `%APPDATA%\原神跟跑助手\` |
+| 版本 | 直接下载 | 适合 | 设置保存在 |
+| --- | --- | --- | --- |
+| **zip 绿色版** | [GenshinRouteBuddy-0.2.4-win-x64.zip](https://github.com/FinalLawer/test1/releases/download/v0.2.4/GenshinRouteBuddy-0.2.4-win-x64.zip) | 解压到任意文件夹双击即用，不写注册表，整个文件夹可以拷走 / 放 U 盘 | 程序目录里的 `data\` |
+| **安装版** | [GenshinRouteBuddy-0.2.4-Setup.exe](https://github.com/FinalLawer/test1/releases/download/v0.2.4/GenshinRouteBuddy-0.2.4-Setup.exe) | 想要开始菜单 / 桌面快捷方式、卸载器、开机自启 | `%APPDATA%\原神跟跑助手\` |
+
+下载包旁边附有 `SHA256SUMS.txt`，需要核对文件完整性时可以比一下哈希。
 
 - **第一次双击会弹一次 UAC 申请管理员权限，点「是」**：全局快捷键要在以管理员权限运行的游戏里也生效，这是 Windows 的限制。
 - 安装版有自定义安装页，可以选安装目录，并按需勾选「从旧绿色版迁移数据」（把旧 `data\` 里的设置和小地图标定复制过来）、「同时迁移 B 站登录态」、「开机自动启动」。不勾选也没关系，重新登录一次即可。
