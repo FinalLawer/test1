@@ -1,17 +1,17 @@
 # 原神跟跑助手
 
-一个可以 **压在原神窗口之上** 的 B 站视频悬浮窗：边跑地图边看攻略，按一下快捷键就能暂停视频，不用 alt+tab 切出去。
+**GI-Follow-Assist（GIFA，原神跟跑助手）** 是一个可以 **压在原神窗口之上** 的 B 站视频悬浮窗：边跑地图边看攻略，按一下快捷键就能暂停视频，不用 alt+tab 切出去。
 
 ## 下载与安装
 
-**最新版下载：** https://github.com/FinalLawer/test1/releases/latest
+**最新版下载：** https://github.com/FinalLawer/GIFA/releases/latest
 
 发布包有两种，功能完全一样，按习惯选一个：
 
 | 版本 | 直接下载 | 适合 | 设置保存在 |
 | --- | --- | --- | --- |
-| **zip 绿色版** | [GenshinRouteBuddy-0.2.4-win-x64.zip](https://github.com/FinalLawer/test1/releases/download/v0.2.4/GenshinRouteBuddy-0.2.4-win-x64.zip) | 解压到任意文件夹双击即用，不写注册表，整个文件夹可以拷走 / 放 U 盘 | 程序目录里的 `data\` |
-| **安装版** | [GenshinRouteBuddy-0.2.4-Setup.exe](https://github.com/FinalLawer/test1/releases/download/v0.2.4/GenshinRouteBuddy-0.2.4-Setup.exe) | 想要开始菜单 / 桌面快捷方式、卸载器、开机自启 | `%APPDATA%\原神跟跑助手\` |
+| **zip 绿色版** | [GenshinRouteBuddy-0.2.4-win-x64.zip](https://github.com/FinalLawer/GIFA/releases/download/v0.2.4/GenshinRouteBuddy-0.2.4-win-x64.zip) | 解压到任意文件夹双击即用，不写注册表，整个文件夹可以拷走 / 放 U 盘 | 程序目录里的 `data\` |
+| **安装版** | [GenshinRouteBuddy-0.2.4-Setup.exe](https://github.com/FinalLawer/GIFA/releases/download/v0.2.4/GenshinRouteBuddy-0.2.4-Setup.exe) | 想要开始菜单 / 桌面快捷方式、卸载器、开机自启 | `%APPDATA%\原神跟跑助手\` |
 
 下载包旁边附有 `SHA256SUMS.txt`，需要核对文件完整性时可以比一下哈希。
 
